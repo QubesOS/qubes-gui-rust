@@ -1,0 +1,7 @@
+[workspace]
+members = [
+  "qubes-gui-client",
+  "qubes-gui-server",
+  "qubes-gui",
+  "qubes-castable",
+]
