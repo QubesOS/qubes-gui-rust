@@ -1,5 +1,64 @@
 //! Qubes GUI protocol library.  This provides only the protocol definition; it
 //! does no I/O.
+//!
+//! # Transport and message format
+//!
+//! The Qubes OS GUI protocol is spoken over a vchan between two virtual
+//! machines.  Each message is a C struct that is cast to a byte slice and sent
+//! directly over the vchan, without any marshalling or unmarshalling steps.
+//! This is safe because no GUI message has any padding bytes.  Similarly, the
+//! receiver casts a C struct to a mutable byte slice and reads the bytes
+//! directly into the struct.  This is safe because all possible bit patterns
+//! are valid for every GUI message.  All messages are in native byte order,
+//! which is little-endian for the only platform (amd64) supported by Qubes OS.
+//!
+//! This is very natural to implement in C, but is much less natural to
+//! implement in Rust, as casting a struct reference to a byte slice is
+//! `unsafe`.  To ensure that this does not cause security vulnerabilities,
+//! this library uses the `qubes-castable` crate.  That crate provides a
+//! `castable!` macro to define structs that can be safely casted to a byte
+//! slice.  `castable!` guarantees that every struct it defines can be safely
+//! cast to a byte slice and back; if it cannot, a compile-time error results.
+//! Functions provided by the `qubes-castable` crate are used to perform the
+//! conversions.  To ensure that they cannot be called on inappropriate types
+//! (such as `bool`), they require the unsafe `Castable` trait to be implemented.
+//! The `castable!` macro implements this trait for every type it defines, and
+//! the `qubes-castable` crate implements it for all fixed-width primitive
+//! integer types, `()`, and arrays of `Castable` objects (regardless of length).
+//!
+//! Both clients and servers MUST send each message atomically.  Specifically,
+//! clients and servers MAY use blocking I/O to read each message.  Therefore,
+//! messages MUST be finished soon after they have started, to avoid deadlocks.
+//! This requirement is a consequence of how difficult asynchronous I/O is in C,
+//! and of the desire to keep the code as simple as possible.  Implementations
+//! in other languages, or which uses proper asynchronous I/O libraries, SHOULD
+//! NOT have this limitation.
+//!
+//! # Shared memory
+//!
+//! The Qubes GUI protocol uses inter-qube shared memory for all images.  This
+//! shared memory is not sanitized in any way whatsoever, and may be modified
+//! by the other side at any time without synchronization.  Therefore, all
+//! access to the shared memory is `unsafe`.  Or rather, it *would* be unsafe,
+//! were it not that no such access is required at all!  This avoids requiring
+//! any form of signal handling, which is both `unsafe` and ugly.
+//!
+//! # Differences from the reference implementation
+//!
+//! The reference implementation of the GUI protocol considers the GUI daemon
+//! (the server) to be trusted, while the GUI agent is not trusted.  As such,
+//! the GUI agent blindly trusts the GUI daemon, while the GUI daemon must
+//! carefully validate all data from the GUI agent.
+//!
+//! The Rust implementation takes a different view: *Both* the client and server
+//! consider the other to be untrusted, and all messages are strictly validated.
+//! This is necessary to meet Rust safety requirements, and also makes bugs in
+//! the server easier to detect.
+//!
+//! Additionally, the Rust protocol definition is far, *far* better documented,
+//! and explicitly lists each reference to the X11 protocol specification.  A
+//! future release will not depend on the X11 protocol specification at all,
+//! even for documentation.
 
 #![forbid(missing_docs)]
 
