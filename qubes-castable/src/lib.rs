@@ -13,12 +13,54 @@
 ///
 /// This trait SHOULD NOT be implemented except by using the `castable!` macro.
 /// Doing so is explicitly not supported.
+#[doc(hidden)]
+pub extern crate core;
+
+pub unsafe trait Castable {
+    /// The size of the type.  MUST be equal to the size as determined by
+    /// [`core::mem::size_of`].
+    const SIZE: usize;
+}
+
+// This unsafely implements `Castable for a type, without any checks.  It is not
+// exported and is only used internally to this module.
+macro_rules! unsafe_impl_castable {
+    ($($i: ty,)*) => {$(
+        unsafe impl Castable for $i {
+            const SIZE: usize = $crate::core::mem::size_of::<$i>();
+        }
+    )*}
+}
+
+unsafe_impl_castable!(
+    // Primitive integer types
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    // Unit
+    (),
+);
+
+// Arrays of castable types are castable
+unsafe impl<T, const COUNT: usize> Castable for [T; COUNT] {
+    const SIZE: usize = core::mem::size_of::<[T; COUNT]>();
+}
+
+/// Create a struct that is marked as castable, meaning that it can be converted
+/// to and from a byte slice without any run-time overhead.  This macro:
 ///
-/// # Using the `castable!` macro
+/// 1. Creates a struct with the fields and documentation provided.
+/// 2. Implements the `Castable` trait for that struct, along with safety checks
+///    to ensure that doing so is in fact safe.
 ///
-/// The [castable] macro is used to create castable structs.  It inserts an
-/// `unsafe impl Castable` along with safety checks to ensure that the code is
-/// in fact safe.
+/// # Examples
 ///
 /// This will not compile, as the compiler would insert padding:
 ///
@@ -127,50 +169,6 @@
 ///         y: Test,
 ///     }
 /// };
-
-#[doc(hidden)]
-pub extern crate core;
-
-pub unsafe trait Castable {
-    /// The size of the type.  MUST be equal to the size as determined by
-    /// [`core::mem::size_of`].
-    const SIZE: usize;
-}
-
-// This unsafely implements `Castable for a type, without any checks.  It is not
-// exported and is only used internally to this module.
-macro_rules! unsafe_impl_castable {
-    ($($i: ty,)*) => {$(
-        unsafe impl Castable for $i {
-            const SIZE: usize = $crate::core::mem::size_of::<$i>();
-        }
-    )*}
-}
-
-unsafe_impl_castable!(
-    // Primitive integer types
-    u8,
-    u16,
-    u32,
-    u64,
-    u128,
-    i8,
-    i16,
-    i32,
-    i64,
-    i128,
-    // Unit
-    (),
-);
-
-// Arrays of castable types are castable
-unsafe impl<T, const COUNT: usize> Castable for [T; COUNT] {
-    const SIZE: usize = core::mem::size_of::<[T; COUNT]>();
-}
-
-/// Create a struct that is marked as castable, meaning that it can be converted
-/// to and from a byte slice without any run-time overhead.  See the module-level
-/// documentation for details.
 #[macro_export]
 macro_rules! castable {
     ($($(#[doc = $m: expr])*
