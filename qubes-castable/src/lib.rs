@@ -168,11 +168,6 @@ unsafe impl<T, const COUNT: usize> Castable for [T; COUNT] {
     const SIZE: usize = core::mem::size_of::<[T; COUNT]>();
 }
 
-// Arrays of castable types are castable
-unsafe impl<T> Castable for [T] {
-    const SIZE: usize = 0;
-}
-
 /// Create a struct that is marked as castable, meaning that it can be converted
 /// to and from a byte slice without any run-time overhead.  See the module-level
 /// documentation for details.
