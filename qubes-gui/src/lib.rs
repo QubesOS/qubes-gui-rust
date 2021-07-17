@@ -62,59 +62,88 @@
 
 #![forbid(missing_docs)]
 
-/// Message types
-#[non_exhaustive]
-#[repr(u32)]
-pub enum Msg {
-    /// A key has been pressed
-    KeyPress = 124,
-    /// A button has been pressed
-    Button = 125,
-    /// Crossing
-    Crossing,
-    /// Daemon ⇒ agent: A window has just acquired focus.
-    Focus,
-    /// Daemon ⇒ agent, obsolete.
-    Resize,
-    /// Agent ⇒ daemon: Creates a window.
-    Create,
-    /// Agent ⇒ daemon: Destroys a window.
-    Destroy,
-    /// Bidirectional: Map a window.
-    Map,
-    /// Agent ⇒ daemon: Unmap a window
-    Unmap,
-    /// Bidirectional: Configure a window
-    Configure,
-    /// Ask dom0 (only!) to map the given amount of memory into composition
-    /// buffer.  Deprecated.
-    MfnDump,
-    /// Agent ⇒ daemon: Redraw given area of screen.
-    ShmImage,
-    /// Daemon ⇒ agent: Request that a window be destroyed.
-    Close,
-    /// Daemon ⇒ agent, deprecated, DO NOT USE
-    Execute,
-    /// Daemon ⇒ agent: Request clipboard data.
-    ClipboardReq,
-    /// Agent ⇒ daemon: Reply with clipboard data.
-    ClipboardData,
-    /// Agent ⇒ daemon: Set the title of a window.  Called MSG_WMNAME in C.
-    SetTitle,
-    /// Daemon ⇒ agent: Update the keymap
-    KeymapNotify,
-    /// Agent ⇒ daemon: Dock a window
-    Dock,
-    /// Agent ⇒ daemon: Set window manager hints.
-    WindowHints,
-    /// Agent ⇒ daemon: Set window manager flags.
-    WindowFlags,
-    /// Agent ⇒ daemon: Set window class.
-    WindowClass,
-    /// Agent ⇒ daemon: Send shared memory dump
-    WindowDump,
-    /// Agent ⇒ daemon: Set cursor type
-    Cursor,
+macro_rules! enum_const {
+    (
+        #[repr($t: ident)]
+        $(#[$i: meta])*
+        $p: vis enum $n: ident {
+            $(
+                $(#[$j: meta])*
+                ($const_name: ident, $variant_name: ident) = $e: expr
+            ),*$(,)?
+        }
+    ) => {
+        $(#[$i])*
+        #[repr($t)]
+        #[non_exhaustive]
+        $p enum $n {
+            $(
+                $(#[$j])*
+                $variant_name = $e,
+            )*
+        }
+
+        $(
+            $(#[$j])*
+            $p const $const_name: $t = $e;
+        )*
+    }
+}
+
+enum_const! {
+    #[repr(u32)]
+    /// Message types
+    pub enum Msg {
+        /// A key has been pressed
+        (MSG_KEYPRESS, KeyPress) = 124,
+        /// A button has been pressed
+        (MSG_BUTTON, Button) = 125,
+        /// Crossing
+        (MSG_CROSSING, Crossing) = 126,
+        /// Daemon ⇒ agent: A window has just acquired focus.
+        (MSG_FOCUS, Focus) = 127,
+        /// Daemon ⇒ agent, obsolete.
+        (MSG_RESIZE, Resize) = 128,
+        /// Agent ⇒ daemon: Creates a window.
+        (MSG_CREATE, Create) = 129,
+        /// Agent ⇒ daemon: Destroys a window.
+        (MSG_DESTROY, Destroy) = 130,
+        /// Bidirectional: Map a window.
+        (MSG_MAP, Map) = 131,
+        /// Agent ⇒ daemon: Unmap a window
+        (MSG_UNMAP, Unmap) = 132,
+        /// Bidirectional: Configure a window
+        (MSG_CONFIGURE, Configure) = 133,
+        /// Ask dom0 (only!) to map the given amount of memory into composition
+        /// buffer.  Deprecated.
+        (MSG_MFNDUMP, MfnDump) = 134,
+        /// Agent ⇒ daemon: Redraw given area of screen.
+        (MSG_SHMIMAGE, ShmImage) = 135,
+        /// Daemon ⇒ agent: Request that a window be destroyed.
+        (MSG_CLOSE, Close) = 136,
+        /// Daemon ⇒ agent, deprecated, DO NOT USE
+        (MSG_EXECUTE, Execute) = 137,
+        /// Daemon ⇒ agent: Request clipboard data.
+        (MSG_CLIPBOARD_REQ, ClipboardReq) = 138,
+        /// Agent ⇒ daemon: Reply with clipboard data.
+        (MSG_CLIPBOARD_DATA, ClipboardData) = 139,
+        /// Agent ⇒ daemon: Set the title of a window.  Called MSG_WMNAME in C.
+        (MSG_SET_TITLE, SetTitle) = 140,
+        /// Daemon ⇒ agent: Update the keymap
+        (MSG_KEYMAP_NOTIFY, KeymapNotify) = 141,
+        /// Agent ⇒ daemon: Dock a window
+        (MSG_DOCK, Dock) = 142,
+        /// Agent ⇒ daemon: Set window manager hints.
+        (MSG_WINDOW_HINTS, WindowHints) = 143,
+        /// Agent ⇒ daemon: Set window manager flags.
+        (MSG_WINDOW_FLAGS, WindowFlags) = 144,
+        /// Agent ⇒ daemon: Set window class.
+        (MSG_WINDOW_CLASS, WindowClass) = 145,
+        /// Agent ⇒ daemon: Send shared memory dump
+        (MSG_WINDOW_DUMP, WindowDump) = 146,
+        /// Agent ⇒ daemon: Set cursor type
+        (MSG_CURSOR, Cursor) = 147,
+    }
 }
 
 /// Flags for [`WindowHints`].  These are a bitmask.
