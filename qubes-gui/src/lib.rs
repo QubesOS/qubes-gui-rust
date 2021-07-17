@@ -69,7 +69,7 @@ macro_rules! enum_const {
         $p: vis enum $n: ident {
             $(
                 $(#[$j: meta])*
-                ($const_name: ident, $variant_name: ident) = $e: expr
+                ($const_name: ident, $variant_name: ident) $(= $e: expr)?
             ),*$(,)?
         }
     ) => {
@@ -79,13 +79,13 @@ macro_rules! enum_const {
         $p enum $n {
             $(
                 $(#[$j])*
-                $variant_name = $e,
+                $variant_name $(= $e)?,
             )*
         }
 
         $(
             $(#[$j])*
-            $p const $const_name: $t = $e;
+            $p const $const_name: $t = $n::$variant_name as $t;
         )*
     }
 }
