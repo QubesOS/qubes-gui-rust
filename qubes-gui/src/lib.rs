@@ -97,52 +97,54 @@ enum_const! {
         /// A key has been pressed
         (MSG_KEYPRESS, KeyPress) = 124,
         /// A button has been pressed
-        (MSG_BUTTON, Button) = 125,
+        (MSG_BUTTON, Button),
+        /// Motion has happened
+        (MSG_MOTION, Motion),
         /// Crossing
-        (MSG_CROSSING, Crossing) = 126,
+        (MSG_CROSSING, Crossing),
         /// Daemon ⇒ agent: A window has just acquired focus.
-        (MSG_FOCUS, Focus) = 127,
+        (MSG_FOCUS, Focus),
         /// Daemon ⇒ agent, obsolete.
-        (MSG_RESIZE, Resize) = 128,
+        (MSG_RESIZE, Resize),
         /// Agent ⇒ daemon: Creates a window.
-        (MSG_CREATE, Create) = 129,
+        (MSG_CREATE, Create),
         /// Agent ⇒ daemon: Destroys a window.
-        (MSG_DESTROY, Destroy) = 130,
+        (MSG_DESTROY, Destroy),
         /// Bidirectional: Map a window.
-        (MSG_MAP, Map) = 131,
+        (MSG_MAP, Map),
         /// Agent ⇒ daemon: Unmap a window
-        (MSG_UNMAP, Unmap) = 132,
+        (MSG_UNMAP, Unmap) = 133,
         /// Bidirectional: Configure a window
-        (MSG_CONFIGURE, Configure) = 133,
+        (MSG_CONFIGURE, Configure),
         /// Ask dom0 (only!) to map the given amount of memory into composition
         /// buffer.  Deprecated.
-        (MSG_MFNDUMP, MfnDump) = 134,
+        (MSG_MFNDUMP, MfnDump),
         /// Agent ⇒ daemon: Redraw given area of screen.
-        (MSG_SHMIMAGE, ShmImage) = 135,
+        (MSG_SHMIMAGE, ShmImage),
         /// Daemon ⇒ agent: Request that a window be destroyed.
-        (MSG_CLOSE, Close) = 136,
+        (MSG_CLOSE, Close),
         /// Daemon ⇒ agent, deprecated, DO NOT USE
-        (MSG_EXECUTE, Execute) = 137,
+        (MSG_EXECUTE, Execute),
         /// Daemon ⇒ agent: Request clipboard data.
-        (MSG_CLIPBOARD_REQ, ClipboardReq) = 138,
+        (MSG_CLIPBOARD_REQ, ClipboardReq),
         /// Agent ⇒ daemon: Reply with clipboard data.
-        (MSG_CLIPBOARD_DATA, ClipboardData) = 139,
+        (MSG_CLIPBOARD_DATA, ClipboardData),
         /// Agent ⇒ daemon: Set the title of a window.  Called MSG_WMNAME in C.
-        (MSG_SET_TITLE, SetTitle) = 140,
+        (MSG_SET_TITLE, SetTitle),
         /// Daemon ⇒ agent: Update the keymap
-        (MSG_KEYMAP_NOTIFY, KeymapNotify) = 141,
+        (MSG_KEYMAP_NOTIFY, KeymapNotify),
         /// Agent ⇒ daemon: Dock a window
-        (MSG_DOCK, Dock) = 142,
+        (MSG_DOCK, Dock) = 143,
         /// Agent ⇒ daemon: Set window manager hints.
-        (MSG_WINDOW_HINTS, WindowHints) = 143,
+        (MSG_WINDOW_HINTS, WindowHints),
         /// Agent ⇒ daemon: Set window manager flags.
-        (MSG_WINDOW_FLAGS, WindowFlags) = 144,
+        (MSG_WINDOW_FLAGS, WindowFlags),
         /// Agent ⇒ daemon: Set window class.
-        (MSG_WINDOW_CLASS, WindowClass) = 145,
+        (MSG_WINDOW_CLASS, WindowClass),
         /// Agent ⇒ daemon: Send shared memory dump
-        (MSG_WINDOW_DUMP, WindowDump) = 146,
+        (MSG_WINDOW_DUMP, WindowDump),
         /// Agent ⇒ daemon: Set cursor type
-        (MSG_CURSOR, Cursor) = 147,
+        (MSG_CURSOR, Cursor),
     }
 }
 
