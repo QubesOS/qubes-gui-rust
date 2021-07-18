@@ -4,4 +4,6 @@ members = [
   "qubes-gui-server",
   "qubes-gui",
   "qubes-castable",
+  "vchan",
+  "vchan-sys",
 ]
