@@ -20,7 +20,8 @@
  *
  */
 #[repr(C)]
-pub struct Vchan { _unused: [u8; 0] }
+#[allow(non_camel_case_types)]
+pub struct libvchan_t { _unused: [u8; 0] }
 use std::os::raw::{c_int, c_void};
 
 /* return values from libvchan_is_open */

@@ -24,6 +24,9 @@ version = "0.1.0"
 [[package]]
 name = "vchan"
 version = "0.1.0"
+dependencies = [
+ "vchan-sys",
+]
 
 [[package]]
 name = "vchan-sys"
