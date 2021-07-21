@@ -190,6 +190,35 @@ unsafe impl<T, const COUNT: usize> Castable for [T; COUNT] {
 ///         y: Test,
 ///     }
 /// };
+/// ```
+///
+/// The `NonZero*` types from `core::num` are not castable
+///
+/// ```rust,compile_fail
+/// # use qubes_castable::castable;
+/// castable! {
+///     /// A struct
+///     struct Bad {
+///         /// First field
+///         s: core::num::NonZeroU32,
+///     }
+/// }
+/// ```
+///
+/// But `Option<NonZero*>` is:
+///
+/// ```rust
+/// # use qubes_castable::castable;
+/// castable! {
+///     /// A struct
+///     struct Good {
+///         /// First field
+///         s: Option<core::num::NonZeroU32>,
+///         /// Second field
+///         t: Option<std::num::NonZeroU32>,
+///     }
+/// }
+/// ```
 #[macro_export]
 macro_rules! castable {
     ($($(#[doc = $m: expr])*
