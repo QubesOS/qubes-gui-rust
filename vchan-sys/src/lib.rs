@@ -21,7 +21,9 @@
  */
 #[repr(C)]
 #[allow(non_camel_case_types)]
-pub struct libvchan_t { _unused: [u8; 0] }
+pub struct libvchan_t {
+    _unused: [u8; 0],
+}
 use std::os::raw::{c_int, c_void};
 
 /* return values from libvchan_is_open */
@@ -34,7 +36,12 @@ pub const VCHAN_WAITING: c_int = 2;
 
 #[link(name = "vchan-xen")]
 extern "C" {
-    pub fn libvchan_server_init(domain: c_int, port: c_int, read_min: usize, write_min: usize) -> *mut libvchan_t;
+    pub fn libvchan_server_init(
+        domain: c_int,
+        port: c_int,
+        read_min: usize,
+        write_min: usize,
+    ) -> *mut libvchan_t;
     pub fn libvchan_client_init(domain: c_int, port: c_int) -> *mut libvchan_t;
     pub fn libvchan_write(ctrl: *mut libvchan_t, data: *const c_void, size: usize) -> c_int;
     pub fn libvchan_read(ctrl: *mut libvchan_t, data: *mut c_void, size: usize) -> c_int;

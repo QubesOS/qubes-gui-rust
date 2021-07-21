@@ -19,8 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  */
-use std::os::{raw::c_int, unix::prelude::RawFd};
 use std::io::{Error, Read, Write};
+use std::os::{raw::c_int, unix::prelude::RawFd};
 #[derive(Debug)]
 
 /// Status of the channel
@@ -46,16 +46,26 @@ impl Vchan {
     /// Creates a listening vchan that listens from requests from the given domain
     /// on the given port.
     #[inline]
-    pub fn server<T>(domain: T, port: c_int, read_min: usize, write_min: usize) -> Result<Self, Error>
-        where u16: From<T>
+    pub fn server<T>(
+        domain: T,
+        port: c_int,
+        read_min: usize,
+        write_min: usize,
+    ) -> Result<Self, Error>
+    where
+        u16: From<T>,
     {
         Self::server_inner(domain.into(), port, read_min, write_min)
     }
 
-    fn server_inner(domain: u16, port: c_int, read_min: usize, write_min: usize) -> Result<Self, Error> {
-        let ptr = unsafe {
-            vchan_sys::libvchan_server_init(domain.into(), port, read_min, write_min)
-        };
+    fn server_inner(
+        domain: u16,
+        port: c_int,
+        read_min: usize,
+        write_min: usize,
+    ) -> Result<Self, Error> {
+        let ptr =
+            unsafe { vchan_sys::libvchan_server_init(domain.into(), port, read_min, write_min) };
         if ptr.is_null() {
             Err(Error::last_os_error())
         } else {
@@ -66,15 +76,14 @@ impl Vchan {
     /// Creates a vchan that will connect to the given domain via the given port.
     #[inline]
     pub fn client<T>(domain: T, port: c_int) -> Result<Self, Error>
-        where u16: From<T>
+    where
+        u16: From<T>,
     {
         Self::client_inner(domain.into(), port)
     }
 
     fn client_inner(domain: u16, port: c_int) -> Result<Self, Error> {
-        let ptr = unsafe {
-            vchan_sys::libvchan_client_init(domain.into(), port)
-        };
+        let ptr = unsafe { vchan_sys::libvchan_client_init(domain.into(), port) };
         if ptr.is_null() {
             Err(Error::last_os_error())
         } else {
@@ -85,16 +94,12 @@ impl Vchan {
     /// Returns the underlying file descriptor.  The only valid use of this descriptor
     /// is to call `poll` or similar.
     pub fn fd(&self) -> RawFd {
-        unsafe {
-            vchan_sys::libvchan_fd_for_select(self.inner)
-        }
+        unsafe { vchan_sys::libvchan_fd_for_select(self.inner) }
     }
 
     /// Returns the status of this channel.
     pub fn status(&self) -> Status {
-        match unsafe {
-            vchan_sys::libvchan_is_open(self.inner)
-        } {
+        match unsafe { vchan_sys::libvchan_is_open(self.inner) } {
             vchan_sys::VCHAN_DISCONNECTED => Status::Disconnected,
             vchan_sys::VCHAN_CONNECTED => Status::Connected,
             vchan_sys::VCHAN_WAITING => Status::Waiting,
@@ -105,35 +110,31 @@ impl Vchan {
     /// Returns the amount of data that is ready, and thus can be read without
     /// blocking.
     pub fn data_ready(&self) -> usize {
-        let s = unsafe {
-            vchan_sys::libvchan_data_ready(self.inner)
-        };
+        let s = unsafe { vchan_sys::libvchan_data_ready(self.inner) };
         assert!(s >= 0, "Number of bytes ready cannot be negative!");
         s as _
     }
 
     /// Returns the amount of data that can be written without blocking.
     pub fn buffer_space(&self) -> usize {
-        let s = unsafe {
-            vchan_sys::libvchan_buffer_space(self.inner)
-        };
-        assert!(s >= 0, "Number of bytes that can be sent cannot be negative!");
+        let s = unsafe { vchan_sys::libvchan_buffer_space(self.inner) };
+        assert!(
+            s >= 0,
+            "Number of bytes that can be sent cannot be negative!"
+        );
         s as _
     }
 
     /// Wait for I/O in some direction to be possible.  This function is blocking.
     pub fn wait(&self) {
-        unsafe {
-            vchan_sys::libvchan_wait(self.inner)
-        };
+        unsafe { vchan_sys::libvchan_wait(self.inner) };
     }
 }
 
 impl Write for Vchan {
     fn write(&mut self, buffer: &[u8]) -> Result<usize, Error> {
-        let res = unsafe {
-            vchan_sys::libvchan_write(self.inner, buffer.as_ptr() as _, buffer.len())
-        };
+        let res =
+            unsafe { vchan_sys::libvchan_write(self.inner, buffer.as_ptr() as _, buffer.len()) };
         if res == -1 {
             Err(Error::last_os_error())
         } else {
@@ -148,9 +149,8 @@ impl Write for Vchan {
 
 impl Read for Vchan {
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
-        let res = unsafe {
-            vchan_sys::libvchan_read(self.inner, buffer.as_mut_ptr() as _, buffer.len())
-        };
+        let res =
+            unsafe { vchan_sys::libvchan_read(self.inner, buffer.as_mut_ptr() as _, buffer.len()) };
         if res == -1 {
             Err(Error::last_os_error())
         } else {
@@ -161,8 +161,6 @@ impl Read for Vchan {
 
 impl Drop for Vchan {
     fn drop(&mut self) {
-        unsafe {
-            vchan_sys::libvchan_close(self.inner)
-        }
+        unsafe { vchan_sys::libvchan_close(self.inner) }
     }
 }

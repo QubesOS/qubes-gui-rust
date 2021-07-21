@@ -30,11 +30,13 @@ macro_rules! unsafe_impl_castable {
             const SIZE: usize = {
                 #[forbid(improper_ctypes)]
                 #[forbid(improper_ctypes_definitions)]
-                extern "C" fn _dummy() -> $i { unreachable!() }
+                extern "C" fn _dummy() -> $i {
+                    unreachable!()
+                }
                 $crate::core::mem::size_of::<$i>()
             };
         }
-    }
+    };
 }
 
 unsafe_impl_castable!(());
@@ -228,9 +230,7 @@ macro_rules! castable {
 /// This is safe because [`Castable`] is unsafe to implement.
 pub fn as_bytes_single<T: Castable>(obj: &T) -> &[u8] {
     // SAFETY: By the contract of `Castable`, `obj` has no padding bytes.
-    unsafe {
-        core::slice::from_raw_parts(obj as *const T as *const u8, core::mem::size_of::<T>())
-    }
+    unsafe { core::slice::from_raw_parts(obj as *const T as *const u8, core::mem::size_of::<T>()) }
 }
 
 /// Casts a mutable reference to a [`Castable`] type to a `&mut [u8]`, without
