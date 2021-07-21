@@ -22,29 +22,50 @@ pub unsafe trait Castable {
     const SIZE: usize;
 }
 
-// This unsafely implements `Castable for a type, without any checks.  It is not
-// exported and is only used internally to this module.
+// This unsafely implements Castable for a type, checking only that it is
+// FFI-safe.  It is not exported and is only used internally to this module.
 macro_rules! unsafe_impl_castable {
-    ($($i: ty,)*) => {$(
+    ($i: ty) => {
         unsafe impl Castable for $i {
-            const SIZE: usize = $crate::core::mem::size_of::<$i>();
+            const SIZE: usize = {
+                #[forbid(improper_ctypes)]
+                #[forbid(improper_ctypes_definitions)]
+                extern "C" fn _dummy() -> $i { unreachable!() }
+                $crate::core::mem::size_of::<$i>()
+            };
+        }
+    }
+}
+
+unsafe_impl_castable!(());
+
+// Unsafely implement Castable for Option<NonZero*>, but check layouts first
+macro_rules! unsafe_castable_nonzero {
+    ($(($i: ident, $j: ty),)*) => {$(
+        unsafe_impl_castable!($j);
+        unsafe impl Castable for Option<$crate::core::num::$i> {
+            const SIZE: usize = {
+                #[forbid(improper_ctypes)]
+                #[forbid(improper_ctypes_definitions)]
+                extern "C" fn _dummy() -> Option<$crate::core::num::$i> { unreachable!() }
+                let _: [u8; $crate::core::mem::size_of::<Option<$crate::core::num::$i>>()] =
+                    [0u8; $crate::core::mem::size_of::<$j>()];
+                $crate::core::mem::size_of::<$j>()
+            };
         }
     )*}
 }
 
-unsafe_impl_castable!(
-    // Primitive integer types
-    u8,
-    u16,
-    u32,
-    u64,
-    i8,
-    i16,
-    i32,
-    i64,
-    // Unit
-    (),
-);
+unsafe_castable_nonzero! {
+    (NonZeroU8, u8),
+    (NonZeroU16, u16),
+    (NonZeroU32, u32),
+    (NonZeroU64, u64),
+    (NonZeroI8, i8),
+    (NonZeroI16, i16),
+    (NonZeroI32, i32),
+    (NonZeroI64, i64),
+}
 
 // Arrays of castable types are castable
 unsafe impl<T, const COUNT: usize> Castable for [T; COUNT] {
