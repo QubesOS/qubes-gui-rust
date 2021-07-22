@@ -27,12 +27,13 @@
 //! integer types, `()`, and arrays of `Castable` objects (regardless of length).
 //!
 //! Both clients and servers MUST send each message atomically.  Specifically,
-//! clients and servers MAY use blocking I/O to read each message.  Therefore,
-//! messages MUST be finished soon after they have started, to avoid deadlocks.
-//! This requirement is a consequence of how difficult asynchronous I/O is in C,
-//! and of the desire to keep the code as simple as possible.  Implementations
-//! in other languages, or which uses proper asynchronous I/O libraries, SHOULD
-//! NOT have this limitation.
+//! the server MAY use blocking I/O over the vchan.  The client MUST NOT block
+//! on the server, to avoid deadlocks.  Therefore, the client should buffer its
+//! messages and flush them at every opportunity.  This requirement is a
+//! consequence of how difficult asynchronous I/O is in C, and of the desire to
+//! keep the code as simple as possible.  Implementations in other languages, or
+//! which uses proper asynchronous I/O libraries, SHOULD NOT have this
+//! limitation.
 //!
 //! # Shared memory
 //!
@@ -61,6 +62,8 @@
 //! even for documentation.
 
 #![forbid(missing_docs)]
+#![no_std]
+use core::num::NonZeroU32;
 
 macro_rules! enum_const {
     (
@@ -224,7 +227,7 @@ qubes_castable::castable! {
         /// Rectangle the window is to occupy
         rectangle: Rectangle,
         /// Parent window.  This must exist.
-        parent: u32,
+        parent: Option<NonZeroU32>,
         /// If this is 1, then this window (usually a menu) should not be
         /// managed by the window manager.  If this is 0, the window should be
         /// managed by the window manager.  All other values are invalid.
