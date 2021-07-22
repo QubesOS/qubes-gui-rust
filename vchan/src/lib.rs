@@ -21,9 +21,9 @@
  */
 use std::io::{Error, Read, Write};
 use std::os::{raw::c_int, unix::prelude::RawFd};
-#[derive(Debug)]
 
 /// Status of the channel
+#[derive(Debug)]
 pub enum Status {
     /// Remote disconnected or remote domain dead
     Disconnected,
@@ -38,6 +38,7 @@ pub enum Status {
 ///
 /// The `Read` implementation of [`Vchan`] does not read from the slice passed
 /// to it, and is safe to call even if that slice is uninitialized memory.
+#[derive(Debug)]
 pub struct Vchan {
     inner: *mut vchan_sys::libvchan_t,
 }
