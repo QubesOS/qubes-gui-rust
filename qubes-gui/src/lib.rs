@@ -64,6 +64,7 @@
 #![forbid(missing_docs)]
 #![no_std]
 use core::num::NonZeroU32;
+use qubes_castable;
 
 macro_rules! enum_const {
     (
@@ -167,6 +168,41 @@ pub enum WindowHintsFlags {
     PBaseSize = 1 << 8,
 }
 
+/// Trait for Qubes GUI structs, specifying the message number.
+pub trait Message: qubes_castable::Castable {
+    /// The kind of the message
+    fn kind(&self) -> u32;
+}
+
+macro_rules! message {
+    ($($(#[doc = $m: expr])*
+    #[message = $num: expr]
+    $p: vis struct $s: ident {
+        $(
+            $(#[doc = $n: expr])*
+            $name: ident : $ty : ty
+        ),*$(,)?
+    })+) => {
+        $(
+            $crate::qubes_castable::castable! {
+                $(#[doc = $m])*
+                $p struct $s {
+                    $(
+                        $(#[doc = $n])*
+                        $name : $ty,
+                    )*
+                }
+            }
+
+            impl $crate::Message for $s {
+                fn kind(&self) -> u32 {
+                    $num
+                }
+            }
+        )+
+    }
+}
+
 qubes_castable::castable! {
     /// A GUI message as it appears on the wire.  All fields are in native byte
     /// order.
@@ -208,7 +244,21 @@ qubes_castable::castable! {
         size: WindowSize
     }
 
-    /// Metadata about a mapping
+    /// Daemon ⇒ agent: Root window configuration; sent only at startup, without
+    /// a header.
+    pub struct XConf {
+        /// Root window size
+        size: WindowSize,
+        /// X11 Depth of the root window
+        depth: u32,
+        /// Memory (in KiB) required by the root window, with at least 1 byte to spare
+        mem: u32,
+    }
+}
+
+message! {
+    /// Bidirectional: Metadata about a mapping
+    #[message = MSG_MAP]
     pub struct MapInfo {
         /// The window that this is `transient_for`, or 0 if there is no such
         /// window.  The semantics of `transient_for` are defined in the X11
@@ -222,7 +272,8 @@ qubes_castable::castable! {
         override_redirect: u32,
     }
 
-    /// Create a window
+    /// Agent ⇒ daemon: Create a window
+    #[message = MSG_CREATE]
     pub struct Create {
         /// Rectangle the window is to occupy
         rectangle: Rectangle,
@@ -234,7 +285,8 @@ qubes_castable::castable! {
         override_redirect: u32,
     }
 
-    /// Keypress
+    /// Daemon ⇒ agent: Keypress
+    #[message = MSG_KEYPRESS]
     pub struct Keypress {
         /// The X11 type of key pressed
         ty: u32,
@@ -246,7 +298,8 @@ qubes_castable::castable! {
         keycode: u32,
     }
 
-    /// Button press
+    /// Daemon ⇒ agent: Button press
+    #[message = MSG_BUTTON]
     pub struct Button {
         /// X11 event type
         ty: u32,
@@ -258,7 +311,8 @@ qubes_castable::castable! {
         button: u32,
     }
 
-    /// Motion event
+    /// Daemon ⇒ agent: Motion event
+    #[message = MSG_MOTION]
     pub struct Motion {
         /// Coordinates of the motion event
         coordinates: Coordinates,
@@ -268,7 +322,8 @@ qubes_castable::castable! {
         is_hint: u32,
     }
 
-    /// Configure event
+    /// Bidirectional: Configure event
+    #[message = MSG_CONFIGURE]
     pub struct Configure {
         /// Desired rectangle position and size
         rectangle: Rectangle,
@@ -278,13 +333,15 @@ qubes_castable::castable! {
         override_redirect: u32,
     }
 
-    /// Update the given region of the window from the contents of shared memory
+    /// Agent ⇒ daemon: Update the given region of the window from the contents of shared memory
+    #[message = MSG_SHMIMAGE]
     pub struct ShmImage {
         /// Rectangle to update
         rectangle: Rectangle,
     }
 
-    /// Focus event from GUI qube
+    /// Daemon ⇒ agent: Focus event from GUI qube
+    #[message = MSG_FOCUS]
     pub struct Focus {
         /// The X11 event type
         ty: u32,
@@ -294,30 +351,22 @@ qubes_castable::castable! {
         detail: u32,
     }
 
-
-    /// Root window configuration
-    pub struct XConf {
-        /// Root window size
-        size: WindowSize,
-        /// X11 Depth of the root window
-        depth: u32,
-        /// Memory (in KiB) required by the root window, with at least 1 byte to spare
-        mem: u32,
-    }
-
-    /// Set the window name
+    /// Agent ⇒ daemon: Set the window name
+    #[message = MSG_SET_TITLE]
     pub struct WMName {
         /// NUL-terminated name
         data: [u8; 128],
     }
 
-    /// daemon ⇒ agent: Keymap change notification
+    /// Daemon ⇒ agent: Keymap change notification
+    #[message = MSG_KEYMAP_NOTIFY]
     pub struct KeymapNotify {
         /// X11 keymap returned by XQueryKeymap()
         keys: [u8; 32],
     }
 
-    /// agent ⇒ daemon: Set window hints
+    /// Agent ⇒ daemon: Set window hints
+    #[message = MSG_WINDOW_HINTS]
     pub struct WindowHints {
         /// Which elements are valid?
         flags: u32,
@@ -332,6 +381,7 @@ qubes_castable::castable! {
     }
 
     /// Bidirectional: Set window flags
+    #[message = MSG_WINDOW_FLAGS]
     pub struct WindowFlags {
         /// Flags to set
         set: u32,
@@ -339,7 +389,8 @@ qubes_castable::castable! {
         unset: u32,
     }
 
-    /// agent ⇒ daemon: map mfns, deprecated
+    /// Agent ⇒ daemon: map mfns, deprecated
+    #[message = MSG_MFNDUMP]
     pub struct ShmCmd {
         /// ID of the shared memory segment.  Unused; SHOULD be 0.
         shmid: u32,
@@ -357,7 +408,8 @@ qubes_castable::castable! {
         domid: u32,
     }
 
-    /// agent ⇒ daemon: set window class
+    /// Agent ⇒ daemon: set window class
+    #[message = MSG_WINDOW_CLASS]
     pub struct WMClass {
         /// Window class
         res_class: [u8; 64],
@@ -365,7 +417,8 @@ qubes_castable::castable! {
         res_name: [u8; 64],
     }
 
-    /// agent ⇒ daemon: Header of a window dump message
+    /// Agent ⇒ daemon: Header of a window dump message
+    #[message = MSG_WINDOW_DUMP]
     pub struct WindowDumpHeader {
         /// Type of message
         ty: u32,
@@ -375,5 +428,12 @@ qubes_castable::castable! {
         height: u32,
         /// Bits per pixel.  MUST be 24.
         bpp: u32,
+    }
+
+    /// Agent ⇒ daemon: Header of a window dump message
+    #[message = MSG_CURSOR]
+    pub struct Cursor {
+        /// Type of cursor
+        cursor: u32,
     }
 }
