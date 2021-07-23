@@ -20,6 +20,39 @@ pub unsafe trait Castable {
     /// The size of the type.  MUST be equal to the size as determined by
     /// [`core::mem::size_of`].
     const SIZE: usize;
+
+    /// Casts a [`Castable`] type to a `&[u8]`, without any copies.
+    ///
+    /// This is safe because [`Castable`] is unsafe to implement.
+    fn as_bytes(&self) -> &[u8] {
+        // SAFETY: By the contract of `Castable`, `obj` has no padding bytes.
+        unsafe {
+            core::slice::from_raw_parts(
+                self as *const Self as *const u8,
+                core::mem::size_of_val(self),
+            )
+        }
+    }
+
+    /// Casts a mutable reference to a [`Castable`] type to a `&mut [u8]`,
+    /// without any copies.
+    ///
+    /// This is safe because [`Castable`] objects have no padding bytes, and any
+    /// bit pattern is valid for them.
+    fn as_mut_bytes(&mut self) -> &mut [u8] {
+        unsafe {
+            let size = core::mem::size_of_val(self);
+            // Obtain a mutable pointer to `obj`
+            let raw_ptr = self as *mut Self;
+            // End the lifetime of `obj`, to avoid aliasing mutable references
+            core::mem::forget(self);
+            // SAFETY: since &mut references are never aliased, there are currently
+            // *no* references to `obj`.  Furthermore, *any* bit pattern for `obj`
+            // is valid by the contract of `Castable`, so writing through the
+            // returned slice will *not* place `obj` in an invalid state.
+            core::slice::from_raw_parts_mut(raw_ptr as *mut u8, size)
+        }
+    }
 }
 
 // This unsafely implements Castable for a type, checking only that it is
@@ -251,33 +284,6 @@ macro_rules! castable {
             };
         }
         )+
-    }
-}
-
-/// Casts a [`Castable`] type to a `&[u8]`, without any copies
-///
-/// This is safe because [`Castable`] is unsafe to implement.
-pub fn as_bytes_single<T: Castable>(obj: &T) -> &[u8] {
-    // SAFETY: By the contract of `Castable`, `obj` has no padding bytes.
-    unsafe { core::slice::from_raw_parts(obj as *const T as *const u8, core::mem::size_of::<T>()) }
-}
-
-/// Casts a mutable reference to a [`Castable`] type to a `&mut [u8]`, without
-/// any copies.
-///
-/// This is safe because [`Castable`] objects have no padding bytes, and any bit
-/// pattern is valid for them.
-pub fn as_mut_bytes_single<T: Castable>(obj: &mut T) -> &mut [u8] {
-    unsafe {
-        // Obtain a mutable pointer to `obj`
-        let raw_ptr = obj as *mut T;
-        // End the lifetime of `obj`, to avoid aliasing mutable references
-        core::mem::forget(obj);
-        // SAFETY: since &mut references are never aliased, there are currently
-        // *no* references to `obj`.  Furthermore, *any* bit pattern for `obj`
-        // is valid by the contract of `Castable`, so writing through the
-        // returned slice will *not* place `obj` in an invalid state.
-        core::slice::from_raw_parts_mut(raw_ptr as *mut u8, core::mem::size_of::<T>())
     }
 }
 
