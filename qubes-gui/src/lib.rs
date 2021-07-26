@@ -205,9 +205,9 @@ pub enum WindowHintsFlags {
 }
 
 /// Trait for Qubes GUI structs, specifying the message number.
-pub trait Message: qubes_castable::Castable {
+pub trait Message: qubes_castable::Castable + core::default::Default {
     /// The kind of the message
-    fn kind(&self) -> u32;
+    fn kind() -> u32;
 }
 
 macro_rules! message {
@@ -231,11 +231,19 @@ macro_rules! message {
             }
 
             impl $crate::Message for $s {
-                fn kind(&self) -> u32 {
+                fn kind() -> u32 {
                     $num
                 }
             }
         )+
+
+        /// The payload of a non-clipboard message
+        pub enum NonClipboardMessage {
+            $(
+                $(#[doc = $m])*
+                $s($s),
+            )+
+        }
 
         /// Validates the length of a message of a given type, or [`None`] if
         /// the message type is unknown.

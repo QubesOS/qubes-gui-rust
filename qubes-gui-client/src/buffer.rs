@@ -21,8 +21,10 @@
 //! A wrapper around vchans that provides a write buffer.  Used to prevent
 //! deadlocks.
 
+use qubes_castable::Castable as _;
+use qubes_gui::Header;
 use std::collections::VecDeque;
-use std::io::{Result, Write};
+use std::io::{Error, ErrorKind, Read, Result, Write};
 
 #[derive(Debug)]
 pub(crate) struct Vchan {
@@ -77,5 +79,68 @@ impl Vchan {
             self.queue.push_back(buf[written..].to_owned());
         }
         Ok(())
+    }
+
+    /// If there is nothing to read, return `Ok(None)` immediately; otherwise,
+    /// block until a message header has been read or an error (such as EOF)
+    /// occurs.  Returns `Ok(Some(header))` on success and `Err` on error.
+    /// Unknown messages are silently skipped.
+    pub fn read_header(&mut self) -> Result<Option<Header>> {
+        loop {
+            self.drain()?;
+            let ready = self.vchan.data_ready();
+            if ready == 0 {
+                return Ok(None);
+            }
+            let mut h = <Header as Default>::default();
+            self.read_blocking_internal(h.as_mut_bytes(), ready)?;
+            match qubes_gui::check_message_length(h.ty, h.untrusted_len) {
+                None => {
+                    std::io::copy(&mut self.take(h.untrusted_len.into()), &mut std::io::sink())?;
+                }
+                Some(Ok(())) => break Ok(Some(h)),
+                Some(Err(())) => {
+                    break Err(Error::new(
+                        ErrorKind::InvalidData,
+                        "Incoming GUI message has incorrect length",
+                    ))
+                }
+            }
+        }
+    }
+
+    fn read_blocking_internal(&mut self, buf: &mut [u8], mut ready: usize) -> Result<usize> {
+        let input_len = buf.len();
+        let mut slice = buf;
+        loop {
+            // Skip reading if there is nothing to read
+            if ready > 0 {
+                let bytes_to_read = ready.min(slice.len());
+                let read_this_time = self.vchan.read(&mut slice[..bytes_to_read])?;
+                if read_this_time < bytes_to_read {
+                    break Err(Error::new(
+                        ErrorKind::UnexpectedEof,
+                        "vchan returned fewer bytes than were ready",
+                    ));
+                } else if read_this_time > bytes_to_read {
+                    panic!("vchan returned more bytes than asked for")
+                }
+                slice = &mut slice[read_this_time..];
+                if slice.is_empty() {
+                    break Ok(input_len);
+                }
+            }
+            self.vchan.wait();
+            // We could have been woken up because the peer read some data, so
+            // write whatever we can.
+            self.drain()?;
+            ready = self.vchan.data_ready();
+        }
+    }
+}
+
+impl Read for Vchan {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        self.read_blocking_internal(buf, self.vchan.data_ready())
     }
 }
