@@ -4,6 +4,9 @@
 //! from a raw byte sequence.
 #![no_std]
 
+#[doc(hidden)]
+pub extern crate core;
+
 /// A trait for types that can be casted to and from a raw byte slice.
 ///
 /// # Safety
@@ -13,9 +16,20 @@
 ///
 /// This trait SHOULD NOT be implemented except by using the `castable!` macro.
 /// Doing so is explicitly not supported.
-#[doc(hidden)]
-pub extern crate core;
-
+///
+/// Arrays of [`Castable`] types are themselves [`Castable`]:
+///
+/// ```rust
+/// # use qubes_castable::Castable;
+/// assert_eq!(Castable::as_bytes(&[0x0F0Fu16; 2]), &[0xF, 0xF, 0xF, 0xF]);
+/// ```
+///
+/// But arrays of non-[`Castable`] types are not:
+///
+/// ```rust,compile_fail
+/// # use qubes_castable::Castable;
+/// assert_eq!(Castable::as_bytes(&[(0x0F0Fu16,); 2]), &[0xF, 0xF, 0xF, 0xF]);
+/// ```
 pub unsafe trait Castable {
     /// The size of the type.  MUST be equal to the size as determined by
     /// [`core::mem::size_of`].
@@ -251,20 +265,6 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///         t: Option<std::num::NonZeroU32>,
 ///     }
 /// }
-/// ```
-///
-/// Arrays of [`Castable`] types are themselves [`Castable`]:
-///
-/// ```rust
-/// # use qubes_castable::Castable;
-/// assert_eq!(Castable::as_bytes(&[0x0F0Fu16; 2]), &[0xF, 0xF, 0xF, 0xF]);
-/// ```
-///
-/// But arrays of non-[`Castable`] types are not:
-///
-/// ```rust,compile_fail
-/// # use qubes_castable::Castable;
-/// assert_eq!(Castable::as_bytes(&[(0x0F0Fu16,); 2]), &[0xF, 0xF, 0xF, 0xF]);
 /// ```
 #[macro_export]
 macro_rules! castable {
