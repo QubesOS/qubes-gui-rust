@@ -66,6 +66,41 @@
 use core::num::NonZeroU32;
 use qubes_castable;
 
+/// Arbitrary maximum size of a clipboard message
+pub const MAX_CLIPBOARD_SIZE: u32 = 65000;
+
+/// Arbitrary max window height
+pub const MAX_WINDOW_HEIGHT: u32 = 6144;
+
+/// Arbitrary max window width
+pub const MAX_WINDOW_WIDTH: u32 = 16384;
+
+/// Default cursor ID.
+pub const CURSOR_DEFAULT: u32 = 0;
+
+/// Flag that must be set to request an X11 cursor
+pub const CURSOR_X11: u32 = 0x100;
+
+/// Max X11 cursor that can be requested
+pub const CURSOR_X11_MAX: u32 = 0x19a;
+
+/// Bits-per-pixel of the dummy X11 framebuffer driver
+pub const DUMMY_DRV_FB_BPP: u32 = 32;
+
+/// Maximum size of a shared memory segment, in bytes
+pub const MAX_WINDOW_MEM: u32 = MAX_WINDOW_WIDTH * MAX_WINDOW_HEIGHT * (DUMMY_DRV_FB_BPP / 8);
+
+/// Number of bytes in a shared page
+pub const XC_PAGE_SIZE: u32 = 1 << 12;
+
+/// Maximum permissable number of shared memory pages in a single segment using
+/// deprecated privcmd-based shared memory
+pub const MAX_MFN_COUNT: u32 = (MAX_WINDOW_MEM + XC_PAGE_SIZE - 1) >> 12;
+
+/// Maximum permissable number of shared memory pages in a single segment using
+/// grant tables
+pub const MAX_GRANT_REFS_COUNT: u32 = (MAX_WINDOW_MEM + XC_PAGE_SIZE - 1) >> 12;
+
 macro_rules! enum_const {
     (
         #[repr($t: ident)]
