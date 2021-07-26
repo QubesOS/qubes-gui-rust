@@ -103,7 +103,7 @@ unsafe_castable_nonzero! {
 }
 
 // Arrays of castable types are castable
-unsafe impl<T, const COUNT: usize> Castable for [T; COUNT] {
+unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
     const SIZE: usize = core::mem::size_of::<[T; COUNT]>();
 }
 
