@@ -39,7 +39,7 @@ pub struct Client {
 impl Client {
     /// Send a GUI message
     pub fn send<T: qubes_gui::Message>(&self, message: &T, window: NonZeroU32) -> Result<()> {
-        let header = qubes_gui::GUIMessageHeader {
+        let header = qubes_gui::Header {
             ty: message.kind(),
             window: window.into(),
             untrusted_len: T::SIZE as _,

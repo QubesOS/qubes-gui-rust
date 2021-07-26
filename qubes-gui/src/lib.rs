@@ -263,7 +263,7 @@ macro_rules! message {
 qubes_castable::castable! {
     /// A GUI message as it appears on the wire.  All fields are in native byte
     /// order.
-    pub struct GUIMessageHeader {
+    pub struct Header {
         /// Type of the message
         ty: u32,
         /// Window to which the message is directed.
