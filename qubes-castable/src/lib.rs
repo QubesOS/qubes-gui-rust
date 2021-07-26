@@ -30,7 +30,9 @@ pub extern crate core;
 /// # use qubes_castable::Castable;
 /// assert_eq!(Castable::as_bytes(&[(0x0F0Fu16,); 2]), &[0xF, 0xF, 0xF, 0xF]);
 /// ```
-pub unsafe trait Castable {
+pub unsafe trait Castable:
+    Copy + Clone + Eq + PartialEq + Ord + PartialOrd + core::fmt::Debug + core::hash::Hash
+{
     /// The size of the type.  MUST be equal to the size as determined by
     /// [`core::mem::size_of`].
     const SIZE: usize;
@@ -296,6 +298,15 @@ macro_rules! castable {
                 let _: [u8; $crate::core::mem::size_of::<$s>()] = [0u8; SIZE];
                 SIZE
             };
+        }
+        impl $crate::core::default::Default for $s {
+            fn default() -> Self {
+                // SAFETY: all Castable types have all bit patterns valid,
+                // including zero
+                unsafe {
+                    $crate::core::mem::zeroed()
+                }
+            }
         }
         )+
     }
