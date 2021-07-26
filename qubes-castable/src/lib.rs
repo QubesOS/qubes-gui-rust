@@ -252,6 +252,20 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     }
 /// }
 /// ```
+///
+/// Arrays of [`Castable`] types are themselves [`Castable`]:
+///
+/// ```rust
+/// # use qubes_castable::Castable;
+/// assert_eq!(Castable::as_bytes(&[0x0F0Fu16; 2]), &[0xF, 0xF, 0xF, 0xF]);
+/// ```
+///
+/// But arrays of non-[`Castable`] types are not:
+///
+/// ```rust,compile_fail
+/// # use qubes_castable::Castable;
+/// assert_eq!(Castable::as_bytes(&[(0x0F0Fu16,); 2]), &[0xF, 0xF, 0xF, 0xF]);
+/// ```
 #[macro_export]
 macro_rules! castable {
     ($($(#[doc = $m: expr])*
