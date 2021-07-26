@@ -63,6 +63,7 @@
 
 #![forbid(missing_docs)]
 #![no_std]
+use core;
 use core::num::NonZeroU32;
 use qubes_castable;
 
@@ -211,7 +212,7 @@ pub trait Message: qubes_castable::Castable {
 
 macro_rules! message {
     ($($(#[doc = $m: expr])*
-    #[message = $num: expr]
+    #[message = $num: ident]
     $p: vis struct $s: ident {
         $(
             $(#[doc = $n: expr])*
@@ -235,6 +236,27 @@ macro_rules! message {
                 }
             }
         )+
+
+        /// Validates the length of a message of a given type, or [`None`] if
+        /// the message type is unknown.
+        pub fn check_message_length(ty: u32, length: u32) -> Option<Result<(), ()>> {
+            match ty {
+                $(
+                    $num => Some(if length == $crate::core::mem::size_of::<$s>() as u32 {
+                        Ok(())
+                    } else {
+                        Err(())
+                    }),
+                )+
+                MSG_CLIPBOARD_DATA => Some(if length <= MAX_CLIPBOARD_SIZE as u32 {
+                        Ok(())
+                    } else {
+                        Err(())
+                    }),
+
+                _ => None,
+            }
+        }
     }
 }
 
