@@ -24,9 +24,9 @@
 
 use qubes_castable::Castable as _;
 pub use qubes_gui;
-use qubes_gui::Message;
+use qubes_gui::NonClipboardMessage;
 use std::cell::RefCell;
-use std::io::{Read as _, Result};
+use std::io::Result;
 use std::num::NonZeroU32;
 
 mod buffer;
@@ -58,12 +58,11 @@ impl Client {
     /// occurs.  If a message header is read successfully, `Ok(Some(r))` is
     /// returned, and `r` can be used to access the message body.  Otherwise,
     /// `Err` is returned.
-    pub fn read_header<'a>(&'a mut self) -> Result<Option<Reader<'a>>> {
-        let s = self.vchan.borrow_mut().read_header()?;
-        Ok(s.map(move |header| Reader {
-            client: self,
-            header,
-        }))
+    pub fn read_header<'a>(&'a mut self) -> Result<Option<(qubes_gui::Header, Vec<u8>)>> {
+        self.vchan
+            .borrow_mut()
+            .read_header()
+            .map(|s| s.map(|(a, b)| (a, b.to_owned())))
     }
 }
 
@@ -82,24 +81,5 @@ impl<'a> Reader<'a> {
     /// Returns the type of message that was read
     pub fn ty(&self) -> u32 {
         self.header.ty
-    }
-
-    /// Reads the message
-    ///
-    /// # Panics
-    ///
-    /// Panics if the caller tries to read an incorrect message type.
-    pub fn read<T: Message>(self) -> Result<T> {
-        assert_eq!(
-            T::kind(),
-            self.header.ty,
-            "Wrong type passed to Reader::read()!"
-        );
-        let mut h = <T as Default>::default();
-        self.client
-            .vchan
-            .borrow_mut()
-            .read_exact(h.as_mut_bytes())?;
-        Ok(h)
     }
 }

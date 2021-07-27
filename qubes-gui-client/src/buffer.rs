@@ -25,12 +25,24 @@ use qubes_castable::Castable as _;
 use qubes_gui::Header;
 use std::collections::VecDeque;
 use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::mem::size_of;
+
+#[derive(Debug)]
+enum ReadState {
+    ReadingHeader,
+    Error,
+    ReadingBody(Header, usize),
+    Discard(usize),
+}
 
 #[derive(Debug)]
 pub(crate) struct Vchan {
     vchan: vchan::Vchan,
     queue: VecDeque<Vec<u8>>,
     offset: usize,
+    state: ReadState,
+    header: Header,
+    buffer: Vec<u8>,
 }
 
 impl Vchan {
@@ -82,65 +94,89 @@ impl Vchan {
     }
 
     /// If there is nothing to read, return `Ok(None)` immediately; otherwise,
-    /// block until a message header has been read or an error (such as EOF)
-    /// occurs.  Returns `Ok(Some(header))` on success and `Err` on error.
-    /// Unknown messages are silently skipped.
-    pub fn read_header(&mut self) -> Result<Option<Header>> {
+    /// returns `Ok(Some(msg))` if a complete message has been read, or `Err`
+    /// if something went wrong.
+    pub fn read_header(&mut self) -> Result<Option<(Header, &[u8])>> {
+        let mut ready = self.vchan.data_ready();
+        if ready == 0 {
+            return Ok(None);
+        }
         loop {
             self.drain()?;
-            let ready = self.vchan.data_ready();
-            if ready == 0 {
-                return Ok(None);
-            }
-            let mut h = <Header as Default>::default();
-            self.read_blocking_internal(h.as_mut_bytes(), ready)?;
-            match qubes_gui::check_message_length(h.ty, h.untrusted_len) {
-                None => {
-                    std::io::copy(&mut self.take(h.untrusted_len.into()), &mut std::io::sink())?;
+            match self.state {
+                ReadState::Error => {
+                    break Err(Error::new(ErrorKind::Other, "Already in error state"))
                 }
-                Some(Ok(())) => break Ok(Some(h)),
-                Some(Err(())) => {
-                    break Err(Error::new(
-                        ErrorKind::InvalidData,
-                        "Incoming GUI message has incorrect length",
-                    ))
+                ReadState::ReadingHeader if ready >= size_of::<Header>() => {
+                    let mut header = <Header as Default>::default();
+                    if self.vchan.recv(header.as_mut_bytes())? != size_of::<Header>() {
+                        self.state = ReadState::Error;
+                        break Err(Error::new(
+                            ErrorKind::UnexpectedEof,
+                            "Failed to read a full message header",
+                        ));
+                    }
+                    ready -= size_of::<Header>();
+                    match qubes_gui::check_message_length(header.ty, header.untrusted_len) {
+                        None => self.state = ReadState::Discard(header.untrusted_len as _),
+                        Some(Ok(())) => self.state = ReadState::ReadingBody(header, 0),
+                        Some(Err(())) => {
+                            self.state = ReadState::Error;
+                            break Err(Error::new(
+                                ErrorKind::InvalidData,
+                                "Incoming packet has invalid size",
+                            ));
+                        }
+                    }
+                }
+                ReadState::ReadingHeader => break Ok(None),
+                ReadState::Discard(len) => {
+                    self.buffer.resize(256, 0);
+                    match self
+                        .vchan
+                        .read(&mut self.buffer[..ready.min(len.min(256) as usize)])
+                    {
+                        Ok(s) if len == s => self.state = ReadState::ReadingHeader,
+                        Ok(s) if s == 0 => {
+                            self.state = ReadState::Error;
+                            break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan"));
+                        }
+                        Ok(s) => {
+                            assert!(len > s);
+                            self.state = ReadState::Discard(len - s)
+                        }
+                        Err(e) => {
+                            self.state = ReadState::Error;
+                            break Err(e);
+                        }
+                    }
+                }
+                ReadState::ReadingBody(header, read_so_far) => {
+                    let buffer_len = self.buffer.len();
+                    let to_read = ready.min(buffer_len - read_so_far);
+                    match self
+                        .vchan
+                        .read(&mut self.buffer[read_so_far..read_so_far + to_read])
+                    {
+                        Ok(bytes_read) if bytes_read == to_read => {
+                            self.state = ReadState::ReadingHeader;
+                            break Ok(Some((header, &self.buffer[..])));
+                        }
+                        Ok(0) => {
+                            self.state = ReadState::Error;
+                            break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan"));
+                        }
+                        Ok(bytes_read) => {
+                            assert!(to_read > bytes_read);
+                            self.state = ReadState::ReadingBody(header, read_so_far + bytes_read)
+                        }
+                        Err(e) => {
+                            self.state = ReadState::Error;
+                            break Err(e);
+                        }
+                    }
                 }
             }
         }
-    }
-
-    fn read_blocking_internal(&mut self, buf: &mut [u8], mut ready: usize) -> Result<usize> {
-        let input_len = buf.len();
-        let mut slice = buf;
-        loop {
-            // Skip reading if there is nothing to read
-            if ready > 0 {
-                let bytes_to_read = ready.min(slice.len());
-                let read_this_time = self.vchan.read(&mut slice[..bytes_to_read])?;
-                if read_this_time < bytes_to_read {
-                    break Err(Error::new(
-                        ErrorKind::UnexpectedEof,
-                        "vchan returned fewer bytes than were ready",
-                    ));
-                } else if read_this_time > bytes_to_read {
-                    panic!("vchan returned more bytes than asked for")
-                }
-                slice = &mut slice[read_this_time..];
-                if slice.is_empty() {
-                    break Ok(input_len);
-                }
-            }
-            self.vchan.wait();
-            // We could have been woken up because the peer read some data, so
-            // write whatever we can.
-            self.drain()?;
-            ready = self.vchan.data_ready();
-        }
-    }
-}
-
-impl Read for Vchan {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        self.read_blocking_internal(buf, self.vchan.data_ready())
     }
 }

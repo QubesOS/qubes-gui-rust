@@ -130,6 +130,17 @@ impl Vchan {
     pub fn wait(&self) {
         unsafe { vchan_sys::libvchan_wait(self.inner) };
     }
+
+    /// Block until the given buffer is full
+    pub fn recv(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
+        let res =
+            unsafe { vchan_sys::libvchan_recv(self.inner, buffer.as_mut_ptr() as _, buffer.len()) };
+        if res == -1 {
+            Err(Error::last_os_error())
+        } else {
+            Ok(res as _)
+        }
+    }
 }
 
 impl Write for Vchan {
