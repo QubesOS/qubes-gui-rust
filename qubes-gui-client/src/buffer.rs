@@ -30,7 +30,6 @@ use std::mem::size_of;
 #[derive(Debug)]
 enum ReadState {
     ReadingHeader,
-    Error,
     ReadingBody(Header, usize),
     Discard(usize),
 }
@@ -97,20 +96,16 @@ impl Vchan {
     /// returns `Ok(Some(msg))` if a complete message has been read, or `Err`
     /// if something went wrong.
     pub fn read_header(&mut self) -> Result<Option<(Header, &[u8])>> {
+        self.drain()?;
         let mut ready = self.vchan.data_ready();
-        if ready == 0 {
-            return Ok(None);
-        }
         loop {
-            self.drain()?;
+            if ready == 0 {
+                break Ok(None);
+            }
             match self.state {
-                ReadState::Error => {
-                    break Err(Error::new(ErrorKind::Other, "Already in error state"))
-                }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
                     let mut header = <Header as Default>::default();
                     if self.vchan.recv(header.as_mut_bytes())? != size_of::<Header>() {
-                        self.state = ReadState::Error;
                         break Err(Error::new(
                             ErrorKind::UnexpectedEof,
                             "Failed to read a full message header",
@@ -119,61 +114,49 @@ impl Vchan {
                     ready -= size_of::<Header>();
                     match qubes_gui::check_message_length(header.ty, header.untrusted_len) {
                         None => self.state = ReadState::Discard(header.untrusted_len as _),
-                        Some(Ok(())) => self.state = ReadState::ReadingBody(header, 0),
+                        Some(Ok(())) => {
+                            // length was sanitized above
+                            self.buffer.resize(header.untrusted_len as _, 0);
+                            self.state = ReadState::ReadingBody(header, 0)
+                        }
                         Some(Err(())) => {
-                            self.state = ReadState::Error;
                             break Err(Error::new(
                                 ErrorKind::InvalidData,
                                 "Incoming packet has invalid size",
-                            ));
+                            ))
                         }
                     }
                 }
                 ReadState::ReadingHeader => break Ok(None),
                 ReadState::Discard(len) => {
-                    self.buffer.resize(256, 0);
-                    match self
+                    self.buffer.resize(256.min(len).max(self.buffer.len()), 0);
+                    let buf_len = self.buffer.len();
+                    let bytes_read = self
                         .vchan
-                        .read(&mut self.buffer[..ready.min(len.min(256) as usize)])
-                    {
-                        Ok(s) if len == s => self.state = ReadState::ReadingHeader,
-                        Ok(s) if s == 0 => {
-                            self.state = ReadState::Error;
-                            break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan"));
-                        }
-                        Ok(s) => {
-                            assert!(len > s);
-                            self.state = ReadState::Discard(len - s)
-                        }
-                        Err(e) => {
-                            self.state = ReadState::Error;
-                            break Err(e);
-                        }
+                        .read(&mut self.buffer[..ready.min(len.min(buf_len) as usize)])?;
+                    if len == bytes_read {
+                        self.state = ReadState::ReadingHeader
+                    } else if bytes_read == 0 {
+                        break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan"));
+                    } else {
+                        assert!(len > bytes_read);
+                        self.state = ReadState::Discard(len - bytes_read)
                     }
                 }
                 ReadState::ReadingBody(header, read_so_far) => {
                     let buffer_len = self.buffer.len();
                     let to_read = ready.min(buffer_len - read_so_far);
-                    match self
+                    let bytes_read = self
                         .vchan
-                        .read(&mut self.buffer[read_so_far..read_so_far + to_read])
-                    {
-                        Ok(bytes_read) if bytes_read == to_read => {
-                            self.state = ReadState::ReadingHeader;
-                            break Ok(Some((header, &self.buffer[..])));
-                        }
-                        Ok(0) => {
-                            self.state = ReadState::Error;
-                            break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan"));
-                        }
-                        Ok(bytes_read) => {
-                            assert!(to_read > bytes_read);
-                            self.state = ReadState::ReadingBody(header, read_so_far + bytes_read)
-                        }
-                        Err(e) => {
-                            self.state = ReadState::Error;
-                            break Err(e);
-                        }
+                        .read(&mut self.buffer[read_so_far..read_so_far + to_read])?;
+                    if bytes_read == to_read {
+                        self.state = ReadState::ReadingHeader;
+                        break Ok(Some((header, &self.buffer[..])));
+                    } else if bytes_read == 0 {
+                        break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan"));
+                    } else {
+                        assert!(to_read > bytes_read);
+                        self.state = ReadState::ReadingBody(header, read_so_far + bytes_read)
                     }
                 }
             }

@@ -24,51 +24,52 @@
 
 use qubes_castable::Castable as _;
 pub use qubes_gui;
-use qubes_gui::NonClipboardMessage;
-use std::cell::RefCell;
-use std::io::Result;
+use std::io;
 use std::num::NonZeroU32;
+use std::task::Poll;
 
 mod buffer;
 
 /// The entry-point to the library.
 #[derive(Debug)]
 pub struct Client {
-    vchan: RefCell<buffer::Vchan>,
+    vchan: buffer::Vchan,
 }
 
 impl Client {
     /// Send a GUI message.  This never blocks; outgoing messages are queued
     /// until there is space in the vchan.
-    pub fn send<T: qubes_gui::Message>(&self, message: &T, window: NonZeroU32) -> Result<()> {
+    pub fn send<T: qubes_gui::Message>(
+        &mut self,
+        message: &T,
+        window: NonZeroU32,
+    ) -> io::Result<()> {
         let header = qubes_gui::Header {
             ty: T::kind(),
             window: window.into(),
             untrusted_len: std::mem::size_of_val(message) as u32,
         };
-        let mut vchan = self.vchan.borrow_mut();
         // FIXME this is slow
-        vchan.write(header.as_bytes())?;
-        vchan.write(message.as_bytes())?;
+        self.vchan.write(header.as_bytes())?;
+        self.vchan.write(message.as_bytes())?;
         Ok(())
     }
 
-    /// If there is nothing to read, return `Ok(None)` immediately; otherwise,
-    /// block until a message header has been read or an error (such as EOF)
-    /// occurs.  If a message header is read successfully, `Ok(Some(r))` is
-    /// returned, and `r` can be used to access the message body.  Otherwise,
-    /// `Err` is returned.
-    pub fn read_header<'a>(&'a mut self) -> Result<Option<(qubes_gui::Header, Vec<u8>)>> {
-        self.vchan
-            .borrow_mut()
-            .read_header()
-            .map(|s| s.map(|(a, b)| (a, b.to_owned())))
+    /// If a message header is read successfully, `Poll::Ready(Ok(r))` is returned, and
+    /// `r` can be used to access the message body.  If there is not enough data, `Poll::Pending`
+    /// is returned.  `Poll::Ready(Err(_))` is returned if an error occurs.
+    pub fn read_header<'a>(&'a mut self) -> Poll<io::Result<Reader>> {
+        match self.vchan.read_header() {
+            Ok(None) => Poll::Pending,
+            Ok(Some((header, buffer))) => Poll::Ready(Ok(Reader { header, buffer })),
+            Err(e) => Poll::Ready(Err(e)),
+        }
     }
 }
 
 /// Used to obtain the request body after a call to [`Client::read_header`].
 pub struct Reader<'a> {
-    client: &'a mut Client,
+    buffer: &'a [u8],
     header: qubes_gui::Header,
 }
 
@@ -81,5 +82,26 @@ impl<'a> Reader<'a> {
     /// Returns the type of message that was read
     pub fn ty(&self) -> u32 {
         self.header.ty
+    }
+
+    /// Reads the message into the buffer
+    ///
+    /// # Panics
+    ///
+    /// Panics if the wrong type of message is read
+    pub fn read<T: qubes_gui::Message>(self) -> T {
+        assert_eq!(
+            T::kind(),
+            self.header.ty,
+            "Reading the wrong kind of message"
+        );
+        assert_eq!(
+            std::mem::size_of::<T>(),
+            self.buffer.len(),
+            "Reading wrong size of message"
+        );
+        let mut res = <T as Default>::default();
+        res.as_mut_bytes().copy_from_slice(self.buffer);
+        res
     }
 }
