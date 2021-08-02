@@ -348,3 +348,46 @@ pub fn as_bytes<T: Castable>(obj: &[T]) -> &[u8] {
         core::slice::from_raw_parts(raw_ptr as *const u8, len * core::mem::size_of::<T>())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn basic() {
+        castable! {
+            struct Simple {
+                i: u8,
+            }
+        }
+        let mut dummy: Simple = Default::default();
+        assert_eq!(dummy.i, 0);
+        assert_eq!(dummy.as_bytes(), &[0]);
+        let s = dummy.as_mut_bytes();
+        assert_eq!(s, &[0]);
+        s[0] = 60;
+        assert_eq!(dummy.i, 60);
+    }
+
+    #[test]
+    fn options() {
+        use core::{convert::TryInto, num::NonZeroU32};
+        castable! {
+            struct Options {
+                i: Option<NonZeroU32>
+            }
+        }
+
+        let mut dummy = <Options as Default>::default();
+        assert_eq!(dummy.i, None);
+        assert_eq!(dummy.as_bytes(), &[0, 0, 0, 0]);
+        let s = dummy.as_mut_bytes();
+        assert_eq!(s, &[0, 0, 0, 0]);
+        s[0] = 100;
+        assert_eq!(
+            dummy,
+            Options {
+                i: Some(u32::to_be(100u32 << 24).try_into().unwrap())
+            }
+        );
+    }
+}
