@@ -210,64 +210,6 @@ pub trait Message: qubes_castable::Castable + core::default::Default {
     fn kind() -> u32;
 }
 
-macro_rules! message {
-    ($($(#[doc = $m: expr])*
-    #[message = $num: ident]
-    $p: vis struct $s: ident {
-        $(
-            $(#[doc = $n: expr])*
-            $name: ident : $ty : ty
-        ),*$(,)?
-    })+) => {
-        $(
-            $crate::qubes_castable::castable! {
-                $(#[doc = $m])*
-                $p struct $s {
-                    $(
-                        $(#[doc = $n])*
-                        $name : $ty,
-                    )*
-                }
-            }
-
-            impl $crate::Message for $s {
-                fn kind() -> u32 {
-                    $num
-                }
-            }
-        )+
-
-        /// The payload of a non-clipboard message
-        pub enum NonClipboardMessage {
-            $(
-                $(#[doc = $m])*
-                $s($s),
-            )+
-        }
-
-        /// Validates the length of a message of a given type, or [`None`] if
-        /// the message type is unknown.
-        pub fn check_message_length(ty: u32, length: u32) -> Option<Result<(), ()>> {
-            match ty {
-                $(
-                    $num => Some(if length == $crate::core::mem::size_of::<$s>() as u32 {
-                        Ok(())
-                    } else {
-                        Err(())
-                    }),
-                )+
-                MSG_CLIPBOARD_DATA => Some(if length <= MAX_CLIPBOARD_SIZE as u32 {
-                        Ok(())
-                    } else {
-                        Err(())
-                    }),
-
-                _ => None,
-            }
-        }
-    }
-}
-
 qubes_castable::castable! {
     /// A GUI message as it appears on the wire.  All fields are in native byte
     /// order.
@@ -319,11 +261,8 @@ qubes_castable::castable! {
         /// Memory (in KiB) required by the root window, with at least 1 byte to spare
         mem: u32,
     }
-}
 
-message! {
     /// Bidirectional: Metadata about a mapping
-    #[message = MSG_MAP]
     pub struct MapInfo {
         /// The window that this is `transient_for`, or 0 if there is no such
         /// window.  The semantics of `transient_for` are defined in the X11
@@ -338,7 +277,6 @@ message! {
     }
 
     /// Agent ⇒ daemon: Create a window
-    #[message = MSG_CREATE]
     pub struct Create {
         /// Rectangle the window is to occupy
         rectangle: Rectangle,
@@ -351,7 +289,6 @@ message! {
     }
 
     /// Daemon ⇒ agent: Keypress
-    #[message = MSG_KEYPRESS]
     pub struct Keypress {
         /// The X11 type of key pressed
         ty: u32,
@@ -364,7 +301,6 @@ message! {
     }
 
     /// Daemon ⇒ agent: Button press
-    #[message = MSG_BUTTON]
     pub struct Button {
         /// X11 event type
         ty: u32,
@@ -377,7 +313,6 @@ message! {
     }
 
     /// Daemon ⇒ agent: Motion event
-    #[message = MSG_MOTION]
     pub struct Motion {
         /// Coordinates of the motion event
         coordinates: Coordinates,
@@ -387,8 +322,23 @@ message! {
         is_hint: u32,
     }
 
+    /// Daemon ⇒ agent: Crossing event
+    pub struct Crossing {
+        /// Type of the crossing
+        ty: u32,
+        /// Coordinates of the crossing
+        coordinates: Coordinates,
+        /// X11 state of the crossing
+        state: u32,
+        /// X11 mode of the crossing
+        mode: u32,
+        /// X11 detail of the crossing
+        detail: u32,
+        /// X11 focus of the crossing
+        focus: u32,
+    }
+
     /// Bidirectional: Configure event
-    #[message = MSG_CONFIGURE]
     pub struct Configure {
         /// Desired rectangle position and size
         rectangle: Rectangle,
@@ -399,14 +349,12 @@ message! {
     }
 
     /// Agent ⇒ daemon: Update the given region of the window from the contents of shared memory
-    #[message = MSG_SHMIMAGE]
     pub struct ShmImage {
         /// Rectangle to update
         rectangle: Rectangle,
     }
 
     /// Daemon ⇒ agent: Focus event from GUI qube
-    #[message = MSG_FOCUS]
     pub struct Focus {
         /// The X11 event type
         ty: u32,
@@ -417,21 +365,18 @@ message! {
     }
 
     /// Agent ⇒ daemon: Set the window name
-    #[message = MSG_SET_TITLE]
     pub struct WMName {
         /// NUL-terminated name
         data: [u8; 128],
     }
 
     /// Daemon ⇒ agent: Keymap change notification
-    #[message = MSG_KEYMAP_NOTIFY]
     pub struct KeymapNotify {
         /// X11 keymap returned by XQueryKeymap()
         keys: [u8; 32],
     }
 
     /// Agent ⇒ daemon: Set window hints
-    #[message = MSG_WINDOW_HINTS]
     pub struct WindowHints {
         /// Which elements are valid?
         flags: u32,
@@ -446,7 +391,6 @@ message! {
     }
 
     /// Bidirectional: Set window flags
-    #[message = MSG_WINDOW_FLAGS]
     pub struct WindowFlags {
         /// Flags to set
         set: u32,
@@ -455,7 +399,6 @@ message! {
     }
 
     /// Agent ⇒ daemon: map mfns, deprecated
-    #[message = MSG_MFNDUMP]
     pub struct ShmCmd {
         /// ID of the shared memory segment.  Unused; SHOULD be 0.
         shmid: u32,
@@ -474,7 +417,6 @@ message! {
     }
 
     /// Agent ⇒ daemon: set window class
-    #[message = MSG_WINDOW_CLASS]
     pub struct WMClass {
         /// Window class
         res_class: [u8; 64],
@@ -483,7 +425,6 @@ message! {
     }
 
     /// Agent ⇒ daemon: Header of a window dump message
-    #[message = MSG_WINDOW_DUMP]
     pub struct WindowDumpHeader {
         /// Type of message
         ty: u32,
@@ -496,9 +437,39 @@ message! {
     }
 
     /// Agent ⇒ daemon: Header of a window dump message
-    #[message = MSG_CURSOR]
     pub struct Cursor {
         /// Type of cursor
         cursor: u32,
     }
+}
+
+/// Gets the maximum length of a message of a given type, or `None` for an
+/// unknown message (for which there is no limit).
+pub fn max_msg_length(ty: u32) -> Option<usize> {
+    use core::mem::size_of;
+    Some(match ty {
+        MSG_CLIPBOARD_DATA => MAX_CLIPBOARD_SIZE as _,
+        MSG_BUTTON => size_of::<Button>(),
+        MSG_MOTION => size_of::<Motion>(),
+        MSG_CROSSING => size_of::<Crossing>(),
+        MSG_FOCUS => size_of::<Focus>(),
+        MSG_CREATE => size_of::<Create>(),
+        MSG_DESTROY => 0,
+        MSG_MAP => size_of::<MapInfo>(),
+        MSG_UNMAP => 0,
+        MSG_CONFIGURE => size_of::<Configure>(),
+        MSG_MFNDUMP => 0,
+        MSG_SHMIMAGE => size_of::<ShmImage>(),
+        MSG_CLOSE => 0,
+        MSG_CLIPBOARD_REQ => 0,
+        MSG_SET_TITLE => size_of::<WMName>(),
+        MSG_KEYMAP_NOTIFY => size_of::<KeymapNotify>(),
+        MSG_DOCK => 0,
+        MSG_WINDOW_HINTS => size_of::<WindowHints>(),
+        MSG_WINDOW_FLAGS => size_of::<WindowFlags>(),
+        MSG_WINDOW_CLASS => size_of::<WMClass>(),
+        MSG_WINDOW_DUMP => size_of::<WindowDumpHeader>() + 4 * MAX_GRANT_REFS_COUNT as usize,
+        MSG_CURSOR => size_of::<Cursor>(),
+        MSG_EXECUTE | MSG_RESIZE | _ => return None,
+    })
 }

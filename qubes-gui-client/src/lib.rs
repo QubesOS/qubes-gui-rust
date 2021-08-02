@@ -58,50 +58,11 @@ impl Client {
     /// If a message header is read successfully, `Poll::Ready(Ok(r))` is returned, and
     /// `r` can be used to access the message body.  If there is not enough data, `Poll::Pending`
     /// is returned.  `Poll::Ready(Err(_))` is returned if an error occurs.
-    pub fn read_header<'a>(&'a mut self) -> Poll<io::Result<Reader>> {
+    pub fn read_header<'a>(&'a mut self) -> Poll<io::Result<(qubes_gui::Header, &'a [u8])>> {
         match self.vchan.read_header() {
             Ok(None) => Poll::Pending,
-            Ok(Some((header, buffer))) => Poll::Ready(Ok(Reader { header, buffer })),
+            Ok(Some((header, buffer))) => Poll::Ready(Ok((header, buffer))),
             Err(e) => Poll::Ready(Err(e)),
         }
-    }
-}
-
-/// Used to obtain the request body after a call to [`Client::read_header`].
-pub struct Reader<'a> {
-    buffer: &'a [u8],
-    header: qubes_gui::Header,
-}
-
-impl<'a> Reader<'a> {
-    /// Returns the header that was read
-    pub fn header(&self) -> qubes_gui::Header {
-        self.header
-    }
-
-    /// Returns the type of message that was read
-    pub fn ty(&self) -> u32 {
-        self.header.ty
-    }
-
-    /// Reads the message into the buffer
-    ///
-    /// # Panics
-    ///
-    /// Panics if the wrong type of message is read
-    pub fn read<T: qubes_gui::Message>(self) -> T {
-        assert_eq!(
-            T::kind(),
-            self.header.ty,
-            "Reading the wrong kind of message"
-        );
-        assert_eq!(
-            std::mem::size_of::<T>(),
-            self.buffer.len(),
-            "Reading wrong size of message"
-        );
-        let mut res = <T as Default>::default();
-        res.as_mut_bytes().copy_from_slice(self.buffer);
-        res
     }
 }

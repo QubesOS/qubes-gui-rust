@@ -24,14 +24,17 @@
 use qubes_castable::Castable as _;
 use qubes_gui::Header;
 use std::collections::VecDeque;
-use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::convert::TryInto;
+use std::io::{Error, ErrorKind, Result, Write};
 use std::mem::size_of;
+use std::ops::Range;
 
 #[derive(Debug)]
 enum ReadState {
     ReadingHeader,
     ReadingBody(Header, usize),
     Discard(usize),
+    Error,
 }
 
 #[derive(Debug)]
@@ -42,6 +45,16 @@ pub(crate) struct Vchan {
     state: ReadState,
     header: Header,
     buffer: Vec<u8>,
+}
+
+fn u32_to_usize(i: u32) -> usize {
+    let [] = [0; if u32::MAX as usize as u32 == u32::MAX {
+        0
+    } else {
+        1
+    }];
+    i.try_into()
+        .expect("u32 always fits in a usize, or the above statement would not compile; qed")
 }
 
 impl Vchan {
@@ -92,6 +105,14 @@ impl Vchan {
         Ok(())
     }
 
+    #[inline]
+    fn recv(&mut self, s: Range<usize>) -> Result<usize> {
+        self.vchan.recv(&mut self.buffer[s]).map_err(|e| {
+            self.state = ReadState::Error;
+            e
+        })
+    }
+
     /// If there is nothing to read, return `Ok(None)` immediately; otherwise,
     /// returns `Ok(Some(msg))` if a complete message has been read, or `Err`
     /// if something went wrong.
@@ -103,23 +124,31 @@ impl Vchan {
                 break Ok(None);
             }
             match self.state {
+                ReadState::Error => {
+                    break Err(Error::new(ErrorKind::Other, "Already in error state"))
+                }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
                     let mut header = <Header as Default>::default();
-                    if self.vchan.recv(header.as_mut_bytes())? != size_of::<Header>() {
+                    if self.vchan.recv(header.as_mut_bytes()).map_err(|e| {
+                        self.state = ReadState::Error;
+                        e
+                    })? != size_of::<Header>()
+                    {
                         break Err(Error::new(
                             ErrorKind::UnexpectedEof,
                             "Failed to read a full message header",
                         ));
                     }
                     ready -= size_of::<Header>();
-                    match qubes_gui::check_message_length(header.ty, header.untrusted_len) {
-                        None => self.state = ReadState::Discard(header.untrusted_len as _),
-                        Some(Ok(())) => {
+                    let untrusted_len = u32_to_usize(header.untrusted_len);
+                    match qubes_gui::max_msg_length(header.ty) {
+                        None => self.state = ReadState::Discard(untrusted_len),
+                        Some(max_len) if max_len >= untrusted_len => {
                             // length was sanitized above
-                            self.buffer.resize(header.untrusted_len as _, 0);
+                            self.buffer.resize(untrusted_len, 0);
                             self.state = ReadState::ReadingBody(header, 0)
                         }
-                        Some(Err(())) => {
+                        Some(_) => {
                             break Err(Error::new(
                                 ErrorKind::InvalidData,
                                 "Incoming packet has invalid size",
@@ -131,9 +160,7 @@ impl Vchan {
                 ReadState::Discard(len) => {
                     self.buffer.resize(256.min(len).max(self.buffer.len()), 0);
                     let buf_len = self.buffer.len();
-                    let bytes_read = self
-                        .vchan
-                        .read(&mut self.buffer[..ready.min(len.min(buf_len) as usize)])?;
+                    let bytes_read = self.recv(0..ready.min(len.min(buf_len) as usize))?;
                     if len == bytes_read {
                         self.state = ReadState::ReadingHeader
                     } else if bytes_read == 0 {
@@ -146,9 +173,7 @@ impl Vchan {
                 ReadState::ReadingBody(header, read_so_far) => {
                     let buffer_len = self.buffer.len();
                     let to_read = ready.min(buffer_len - read_so_far);
-                    let bytes_read = self
-                        .vchan
-                        .read(&mut self.buffer[read_so_far..read_so_far + to_read])?;
+                    let bytes_read = self.recv(read_so_far..read_so_far + to_read)?;
                     if bytes_read == to_read {
                         self.state = ReadState::ReadingHeader;
                         break Ok(Some((header, &self.buffer[..])));
