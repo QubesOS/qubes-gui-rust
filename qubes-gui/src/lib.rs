@@ -102,6 +102,9 @@ pub const MAX_MFN_COUNT: u32 = (MAX_WINDOW_MEM + XC_PAGE_SIZE - 1) >> 12;
 /// grant tables
 pub const MAX_GRANT_REFS_COUNT: u32 = (MAX_WINDOW_MEM + XC_PAGE_SIZE - 1) >> 12;
 
+/// GUI agent listening port
+pub const LISTENING_PORT: i16 = 6000;
+
 macro_rules! enum_const {
     (
         #[repr($t: ident)]

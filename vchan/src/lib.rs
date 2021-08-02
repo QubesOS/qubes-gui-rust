@@ -23,7 +23,7 @@ use std::io::{Error, Read, Write};
 use std::os::{raw::c_int, unix::prelude::RawFd};
 
 /// Status of the channel
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Status {
     /// Remote disconnected or remote domain dead
     Disconnected,

@@ -25,7 +25,7 @@ use qubes_castable::Castable as _;
 use qubes_gui::Header;
 use std::collections::VecDeque;
 use std::convert::TryInto;
-use std::io::{Error, ErrorKind, Result, Write};
+use std::io::{self, Error, ErrorKind, Write};
 use std::mem::size_of;
 use std::ops::Range;
 
@@ -58,7 +58,7 @@ fn u32_to_usize(i: u32) -> usize {
 }
 
 impl Vchan {
-    fn write_slice(vchan: &mut vchan::Vchan, slice: &[u8]) -> Result<usize> {
+    fn write_slice(vchan: &mut vchan::Vchan, slice: &[u8]) -> io::Result<usize> {
         let space = vchan.buffer_space();
         if space == 0 {
             Ok(0)
@@ -68,7 +68,7 @@ impl Vchan {
         }
     }
 
-    fn drain(&mut self) -> Result<usize> {
+    fn drain(&mut self) -> io::Result<usize> {
         let mut written = 0;
         loop {
             let front: &mut _ = match self.queue.front_mut() {
@@ -90,7 +90,7 @@ impl Vchan {
         }
     }
 
-    pub fn write(&mut self, buf: &[u8]) -> Result<()> {
+    pub fn write(&mut self, buf: &[u8]) -> io::Result<()> {
         self.drain()?;
         if !self.queue.is_empty() {
             self.queue.push_back(buf.to_owned());
@@ -106,7 +106,7 @@ impl Vchan {
     }
 
     #[inline]
-    fn recv(&mut self, s: Range<usize>) -> Result<usize> {
+    fn recv(&mut self, s: Range<usize>) -> io::Result<usize> {
         self.vchan.recv(&mut self.buffer[s]).map_err(|e| {
             self.state = ReadState::Error;
             e
@@ -116,7 +116,7 @@ impl Vchan {
     /// If there is nothing to read, return `Ok(None)` immediately; otherwise,
     /// returns `Ok(Some(msg))` if a complete message has been read, or `Err`
     /// if something went wrong.
-    pub fn read_header(&mut self) -> Result<Option<(Header, &[u8])>> {
+    pub fn read_header(&mut self) -> io::Result<Option<(Header, &[u8])>> {
         self.drain()?;
         let mut ready = self.vchan.data_ready();
         loop {
@@ -186,5 +186,43 @@ impl Vchan {
                 }
             }
         }
+    }
+
+    pub fn agent(domain: u16) -> io::Result<Self> {
+        let vchan = vchan::Vchan::server(domain, qubes_gui::LISTENING_PORT.into(), 4096, 4096)?;
+        loop {
+            match vchan.status() {
+                vchan::Status::Waiting => vchan.wait(),
+                vchan::Status::Connected => break,
+                vchan::Status::Disconnected => {
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        "Didn’t get a connection from the GUI daemon",
+                    ))
+                }
+            }
+        }
+        let mut res = Self {
+            vchan,
+            queue: Default::default(),
+            offset: 0,
+            header: Default::default(),
+            state: ReadState::ReadingHeader,
+            buffer: vec![],
+        };
+        res.write(((1u32 << 16) | 3u32).as_bytes())?;
+        res.drain()?;
+        Ok(res)
+    }
+
+    pub fn daemon(domain: u16) -> io::Result<Self> {
+        Ok(Self {
+            vchan: vchan::Vchan::client(domain, qubes_gui::LISTENING_PORT.into())?,
+            queue: Default::default(),
+            offset: 0,
+            header: Default::default(),
+            state: ReadState::ReadingHeader,
+            buffer: vec![],
+        })
     }
 }

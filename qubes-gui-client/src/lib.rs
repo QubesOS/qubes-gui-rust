@@ -65,4 +65,16 @@ impl Client {
             Err(e) => Poll::Ready(Err(e)),
         }
     }
+    /// Creates an agent instance
+    pub fn agent(domain: u16) -> io::Result<Self> {
+        Ok(Self {
+            vchan: buffer::Vchan::agent(domain)?,
+        })
+    }
+    /// Creates a daemon instance
+    pub fn daemon(domain: u16) -> io::Result<Self> {
+        Ok(Self {
+            vchan: buffer::Vchan::daemon(domain)?,
+        })
+    }
 }
