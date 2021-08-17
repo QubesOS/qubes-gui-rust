@@ -65,16 +65,19 @@ impl Client {
             Err(e) => Poll::Ready(Err(e)),
         }
     }
-    /// Creates an agent instance
-    pub fn agent(domain: u16) -> io::Result<Self> {
-        Ok(Self {
-            vchan: buffer::Vchan::agent(domain)?,
-        })
-    }
-    /// Creates a daemon instance
+    /// Creates an daemon instance
     pub fn daemon(domain: u16) -> io::Result<Self> {
-        Ok(Self {
-            vchan: buffer::Vchan::daemon(domain)?,
-        })
+        let vchan = buffer::Vchan::daemon(domain)?;
+        Ok(Self { vchan })
+    }
+    /// Creates a agent instance
+    pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
+        let (vchan, conf) = buffer::Vchan::agent(domain)?;
+        Ok((Self { vchan }, conf))
+    }
+
+    /// Gets the raw file descriptor
+    pub fn as_raw_fd(&self) -> std::os::raw::c_int {
+        self.vchan.as_raw_fd()
     }
 }

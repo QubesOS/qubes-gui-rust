@@ -188,7 +188,7 @@ impl Vchan {
         }
     }
 
-    pub fn agent(domain: u16) -> io::Result<Self> {
+    pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
         let vchan = vchan::Vchan::server(domain, qubes_gui::LISTENING_PORT.into(), 4096, 4096)?;
         loop {
             match vchan.status() {
@@ -212,7 +212,9 @@ impl Vchan {
         };
         res.write(((1u32 << 16) | 3u32).as_bytes())?;
         res.drain()?;
-        Ok(res)
+        let mut conf = qubes_gui::XConf::default();
+        res.vchan.recv(conf.as_mut_bytes())?;
+        Ok((res, conf))
     }
 
     pub fn daemon(domain: u16) -> io::Result<Self> {
@@ -224,5 +226,9 @@ impl Vchan {
             state: ReadState::ReadingHeader,
             buffer: vec![],
         })
+    }
+
+    pub fn as_raw_fd(&self) -> std::os::raw::c_int {
+        self.vchan.fd()
     }
 }

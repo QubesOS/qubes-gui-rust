@@ -446,6 +446,36 @@ qubes_castable::castable! {
     }
 }
 
+macro_rules! impl_message {
+    ($(($t: ty, $kind: expr),)+) => {
+        $(impl Message for $t {
+            fn kind() -> u32 {
+                $kind
+            }
+        })+
+    }
+}
+
+impl_message! {
+    (MapInfo, MSG_MAP),
+    (Create, MSG_CREATE),
+    (Keypress, MSG_KEYPRESS),
+    (Button, MSG_BUTTON),
+    (Motion, MSG_MOTION),
+    (Crossing, MSG_CROSSING),
+    (Configure, MSG_CONFIGURE),
+    (ShmImage, MSG_SHMIMAGE),
+    (Focus, MSG_FOCUS),
+    (WMName, MSG_SET_TITLE),
+    (KeymapNotify, MSG_KEYMAP_NOTIFY),
+    (WindowHints, MSG_WINDOW_HINTS),
+    (WindowFlags, MSG_WINDOW_FLAGS),
+    (ShmCmd, MSG_MFNDUMP),
+    (WMClass, MSG_WINDOW_CLASS),
+    (WindowDumpHeader, MSG_WINDOW_DUMP),
+    (Cursor, MSG_CURSOR),
+}
+
 /// Gets the maximum length of a message of a given type, or `None` for an
 /// unknown message (for which there is no limit).
 pub fn max_msg_length(ty: u32) -> Option<usize> {
