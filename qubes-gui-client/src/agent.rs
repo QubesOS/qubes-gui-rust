@@ -176,17 +176,17 @@ impl Agent {
                 );
                 Err(io::Error::last_os_error())
             } else {
-                let ptr = channels.as_mut_ptr() as *mut u32;
+                let channel_ptr = channels.as_mut_ptr() as *mut u32;
                 // overwrite the struct passed to Linux, which is no longer
                 // needed, with the GUI message
-                std::ptr::write(ptr, qubes_gui::WINDOW_DUMP_TYPE_GRANT_REFS);
-                std::ptr::write(ptr.add(1), width);
-                std::ptr::write(ptr.add(2), height);
-                std::ptr::write(ptr.add(3), 24);
+                std::ptr::write(channel_ptr, qubes_gui::WINDOW_DUMP_TYPE_GRANT_REFS);
+                std::ptr::write(channel_ptr.add(1), width);
+                std::ptr::write(channel_ptr.add(2), height);
+                std::ptr::write(channel_ptr.add(3), 24);
                 Ok(Buffer {
                     inner: channels,
                     alloc: Rc::downgrade(&self.alloc),
-                    ptr: ptr as _,
+                    ptr,
                     offset,
                     width,
                     height,
