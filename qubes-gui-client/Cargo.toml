@@ -8,6 +8,7 @@ publish = false
 vchan = { path = "../vchan", version = "0.1.0" }
 qubes-gui = { path = "../qubes-gui", version = "0.1.0" }
 qubes-castable = { path = "../qubes-castable", version = "0.1.0" }
+libc = { path = "../vendor/libc", version = "*" }
 
 [[bin]]
 name = "gui-agent"

@@ -3,6 +3,10 @@
 version = 3
 
 [[package]]
+name = "libc"
+version = "0.2.95"
+
+[[package]]
 name = "qubes-castable"
 version = "0.1.0"
 
@@ -17,6 +21,7 @@ dependencies = [
 name = "qubes-gui-client"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "qubes-castable",
  "qubes-gui",
  "vchan",

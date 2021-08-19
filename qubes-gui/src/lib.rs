@@ -105,6 +105,9 @@ pub const MAX_GRANT_REFS_COUNT: u32 = (MAX_WINDOW_MEM + XC_PAGE_SIZE - 1) >> 12;
 /// GUI agent listening port
 pub const LISTENING_PORT: i16 = 6000;
 
+/// Type of grant refs dump messages
+pub const WINDOW_DUMP_TYPE_GRANT_REFS: u32 = 0;
+
 macro_rules! enum_const {
     (
         #[repr($t: ident)]

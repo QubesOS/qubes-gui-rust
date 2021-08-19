@@ -28,6 +28,8 @@ use std::io;
 use std::num::NonZeroU32;
 use std::task::Poll;
 
+pub mod agent;
+
 mod buffer;
 
 /// The entry-point to the library.
@@ -55,6 +57,8 @@ impl Client {
         Ok(())
     }
 
+    /// Window dump
+
     /// If a message header is read successfully, `Poll::Ready(Ok(r))` is returned, and
     /// `r` can be used to access the message body.  If there is not enough data, `Poll::Pending`
     /// is returned.  `Poll::Ready(Err(_))` is returned if an error occurs.
@@ -65,11 +69,13 @@ impl Client {
             Err(e) => Poll::Ready(Err(e)),
         }
     }
+
     /// Creates an daemon instance
     pub fn daemon(domain: u16) -> io::Result<Self> {
         let vchan = buffer::Vchan::daemon(domain)?;
         Ok(Self { vchan })
     }
+
     /// Creates a agent instance
     pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
         let (vchan, conf) = buffer::Vchan::agent(domain)?;

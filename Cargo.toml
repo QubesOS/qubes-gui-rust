@@ -6,4 +6,6 @@ members = [
   "qubes-castable",
   "vchan",
   "vchan-sys",
+  #"qubes-xen",
+  "vendor/libc",
 ]
