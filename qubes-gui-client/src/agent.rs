@@ -62,12 +62,26 @@ impl Drop for Buffer {
             index: self.offset,
             count: self.grefs,
         };
+        assert!(self.ptr as usize % 4096 == 0, "Unaligned pointer???");
+        let len: usize = self
+            .grefs
+            .checked_mul(qubes_gui::XC_PAGE_SIZE)
+            .expect("grefs is bounded due to the width and height limits, so this cannot fail; qed")
+            .try_into()
+            .unwrap();
+        if unsafe { libc::munmap(self.ptr, len) } != 0 {
+            panic!(
+                "the inputs are correct, and this is not punching a hole in an \
+                 existing mapping, so munmap() cannot fail; qed; error {}",
+                io::Error::last_os_error()
+            )
+        }
         if let Some(alloc) = self.alloc.upgrade() {
             unsafe {
                 assert_eq!(
                     libc::ioctl(alloc.as_raw_fd(), IOCTL_GNTALLOC_DEALLOC_GREF, &p),
                     0,
-                    "Failed to release grant references"
+                    "Releasing a grant reference never fails; qed",
                 );
             }
         } // otherwise, the kernel has done the cleanup when the FD was closed
