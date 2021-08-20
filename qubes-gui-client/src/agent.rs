@@ -108,6 +108,29 @@ impl Buffer {
         self.dimensions.height()
     }
 
+    /// Overwrite the specified offset in the buffer
+    ///
+    /// # Panics
+    ///
+    /// Panics if the offset is out of bounds.
+    pub fn write(&self, buffer: &[u8], offset: usize) {
+        let upper_bound = buffer
+            .len()
+            .checked_add(offset)
+            .expect("offset + buffer length overflows");
+        if upper_bound > self.dimensions.buffer_size() {
+            panic!("Copying to out of bounds memory")
+        }
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                buffer.as_ptr(),
+                self.ptr.add(offset) as *mut u8,
+                buffer.len(),
+            )
+        }
+    }
+
     /// Sends the contents of the window to the GUI agent
     pub fn dump(&self, client: &mut super::Client, window: u32) -> io::Result<()> {
         let total_length = self.dimensions.grefs() * 4
