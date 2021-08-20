@@ -29,7 +29,6 @@ fn main() {
         )
         .unwrap();
     let buf = vchan.alloc_buffer(width, height).unwrap();
-    println!("Grant references: {:#?}", buf.grants());
     buf.dump(vchan.client(), 50).unwrap();
     vchan
         .client()
