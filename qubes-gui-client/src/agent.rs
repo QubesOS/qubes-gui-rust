@@ -1,8 +1,6 @@
 //! Grant-table manipulation code
 
-use std::convert::TryInto;
 use std::io;
-use std::mem::size_of;
 use std::os::unix::io::AsRawFd as _;
 use std::rc::{Rc, Weak};
 
@@ -22,31 +20,106 @@ pub struct Buffer {
     alloc: Weak<std::fs::File>,
     ptr: *mut libc::c_void,
     offset: u64,
-    grefs: u32,
-    width: u32,
-    height: u32,
+    dimensions: dimensions::WindowDimensions,
+}
+
+mod dimensions {
+    use std::io;
+    use std::mem::size_of;
+    pub(super) struct WindowDimensions {
+        width: u32,
+        height: u32,
+    }
+
+    impl WindowDimensions {
+        pub fn new(width: u32, height: u32) -> io::Result<Self> {
+            let _: [u8; 0] = [0u8; (size_of::<u32>() > size_of::<usize>()) as usize
+                + ((u32::MAX / 4) / qubes_gui::MAX_WINDOW_WIDTH <= qubes_gui::MAX_WINDOW_HEIGHT)
+                    as usize];
+            if width > qubes_gui::MAX_WINDOW_WIDTH || height > qubes_gui::MAX_WINDOW_HEIGHT {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Window dimensions {}x{} too large (limit is {}x{})",
+                        width,
+                        height,
+                        qubes_gui::MAX_WINDOW_WIDTH,
+                        qubes_gui::MAX_WINDOW_HEIGHT
+                    ),
+                ));
+            }
+            if width == 0 || height == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Window dimensions {}x{} not valid: neither width nor height may be zero",
+                        width, height,
+                    ),
+                ));
+            }
+            Ok(Self { width, height })
+        }
+
+        pub fn buffer_size(&self) -> usize {
+            assert!(self.width <= qubes_gui::MAX_WINDOW_WIDTH, "checked earlier");
+            assert!(
+                self.width <= qubes_gui::MAX_WINDOW_HEIGHT,
+                "checked earlier"
+            );
+            (self.width * self.height * 4) as usize
+        }
+
+        pub fn grefs(&self) -> u32 {
+            (self.buffer_size() as u32 + qubes_gui::XC_PAGE_SIZE - 1) / qubes_gui::XC_PAGE_SIZE
+        }
+
+        pub fn width(&self) -> u32 {
+            self.width
+        }
+
+        pub fn height(&self) -> u32 {
+            self.height
+        }
+    }
+}
+
+fn cast_u32(s: u32) -> usize {
+    s as _
 }
 
 impl Buffer {
     /// Obtains a slice containing the exported grant references
     pub fn grants(&self) -> &[u32] {
         unsafe {
-            std::slice::from_raw_parts((self.inner.as_ptr() as *const u32).add(4), self.grefs as _)
+            std::slice::from_raw_parts(
+                (self.inner.as_ptr() as *const u32).add(4),
+                cast_u32(self.dimensions.grefs()),
+            )
         }
+    }
+
+    /// Returns the width (in pixels) of this buffer
+    pub fn width(&self) -> u32 {
+        self.dimensions.width()
+    }
+
+    /// Returns the height (in pixels) of this buffer
+    pub fn height(&self) -> u32 {
+        self.dimensions.height()
     }
 
     /// Sends the contents of the window to the GUI agent
     pub fn dump(&self, client: &mut super::Client, window: u32) -> io::Result<()> {
-        let total_length =
-            4usize * self.grefs as usize + std::mem::size_of::<qubes_gui::WindowDumpHeader>();
+        let total_length = self.dimensions.grefs() * 4
+            + (std::mem::size_of::<qubes_gui::WindowDumpHeader>() as u32);
         let header = qubes_gui::Header {
             ty: qubes_gui::MSG_WINDOW_DUMP,
             window,
-            untrusted_len: total_length.try_into().expect("bug"),
+            untrusted_len: total_length,
         };
         assert!(self.inner.capacity() * std::mem::size_of::<u64>() >= total_length as _);
         let msg = unsafe {
-            std::slice::from_raw_parts(self.inner.as_ptr() as *const u8, total_length as _)
+            std::slice::from_raw_parts(self.inner.as_ptr() as *const u8, cast_u32(total_length))
         };
         client
             .vchan
@@ -60,16 +133,10 @@ impl Drop for Buffer {
     fn drop(&mut self) {
         let p = ioctl_gntalloc_dealloc_gref {
             index: self.offset,
-            count: self.grefs,
+            count: self.dimensions.grefs(),
         };
         assert!(self.ptr as usize % 4096 == 0, "Unaligned pointer???");
-        let len: usize = self
-            .grefs
-            .checked_mul(qubes_gui::XC_PAGE_SIZE)
-            .expect("grefs is bounded due to the width and height limits, so this cannot fail; qed")
-            .try_into()
-            .unwrap();
-        if unsafe { libc::munmap(self.ptr, len) } != 0 {
+        if unsafe { libc::munmap(self.ptr, self.dimensions.buffer_size()) } != 0 {
             panic!(
                 "the inputs are correct, and this is not punching a hole in an \
                  existing mapping, so munmap() cannot fail; qed; error {}",
@@ -108,55 +175,24 @@ struct ioctl_gntalloc_dealloc_gref {
 impl Agent {
     /// Allocate a buffer to share with the GUI daemon.
     pub fn alloc_buffer(&mut self, width: u32, height: u32) -> io::Result<Buffer> {
-        let _: [u8; 0] = [0u8; if size_of::<u32>() > size_of::<usize>() {
-            1
-        } else {
-            0
-        }];
-        if width > qubes_gui::MAX_WINDOW_WIDTH || height > qubes_gui::MAX_WINDOW_HEIGHT {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Window dimensions {}x{} too large (limit is {}x{})",
-                    width,
-                    height,
-                    qubes_gui::MAX_WINDOW_WIDTH,
-                    qubes_gui::MAX_WINDOW_HEIGHT
-                ),
-            ));
-        }
-        if width == 0 || height == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Window dimensions {}x{} not valid: neither width nor height may be zero",
-                    width, height,
-                ),
-            ));
-        }
+        let dimensions = dimensions::WindowDimensions::new(width, height)?;
         assert_eq!(qubes_gui::XC_PAGE_SIZE % 4, 0);
-        let pixels_per_gref = qubes_gui::XC_PAGE_SIZE / 4;
-        let grefs = width
-            .checked_mul(height)
-            .expect("excessive width or height detected above")
-            .checked_add(pixels_per_gref - 1)
-            .expect("excessive width or height detected above")
-            / pixels_per_gref;
+        let grefs = dimensions.grefs();
         assert!(
             grefs <= qubes_gui::MAX_GRANT_REFS_COUNT,
             "excessive width or height detected above"
         );
-        let mut channels: Vec<u64> = Vec::with_capacity((grefs as usize + 5) / 2);
+        let mut channels: Vec<u64> = Vec::with_capacity((cast_u32(grefs) + 5) / 2);
         unsafe {
             let ptr = channels.as_mut_ptr() as *mut u8;
             std::ptr::write(ptr as *mut u16, self.peer);
             std::ptr::write((ptr as *mut u16).add(1), 1);
             std::ptr::write((ptr as *mut u32).add(1), grefs);
             if (grefs & 1) != 0 {
-                assert_eq!(channels.capacity() * 2, grefs as usize + 5);
-                std::ptr::write((ptr as *mut u32).add(grefs as usize + 4), 0)
+                assert_eq!(channels.capacity() * 2, cast_u32(grefs) + 5);
+                std::ptr::write((ptr as *mut u32).add(cast_u32(grefs) + 4), 0)
             } else {
-                assert_eq!(channels.capacity() * 2, grefs as usize + 4);
+                assert_eq!(channels.capacity() * 2, cast_u32(grefs) + 4);
             }
             let res = libc::ioctl(
                 self.alloc.as_raw_fd(),
@@ -170,9 +206,7 @@ impl Agent {
             let offset = std::ptr::read((ptr as *const u64).offset(1));
             let ptr = libc::mmap(
                 std::ptr::null_mut(),
-                (width * height * 4)
-                    .try_into()
-                    .expect("u32 is smaller than usize; qed"),
+                dimensions.buffer_size(),
                 libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_SHARED,
                 self.alloc.as_raw_fd(),
@@ -202,9 +236,7 @@ impl Agent {
                     alloc: Rc::downgrade(&self.alloc),
                     ptr,
                     offset,
-                    width,
-                    height,
-                    grefs,
+                    dimensions,
                 })
             }
         }
