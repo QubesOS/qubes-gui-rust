@@ -1,4 +1,5 @@
 use libc::{poll, pollfd};
+use qubes_castable::Castable;
 use std::convert::TryInto;
 // use std::fs::File;
 // use std::os::raw::{c_int, c_short, c_ulong};
@@ -43,7 +44,56 @@ fn main() {
     loop {
         match vchan.client().read_header() {
             Poll::Pending => {}
-            Poll::Ready(Ok(e)) => println!("Got an event from dom0: {:?}", e),
+            Poll::Ready(Ok((e, body))) => match e.ty {
+                qubes_gui::MSG_MOTION => {
+                    let mut m = qubes_gui::Motion::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    println!("Motion event: {:?}", m)
+                }
+                qubes_gui::MSG_CROSSING => {
+                    let mut m = qubes_gui::Crossing::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    println!("Crossing event: {:?}", m)
+                }
+                qubes_gui::MSG_CLOSE => {
+                    assert!(body.is_empty());
+                    println!("Got a close event, exiting!");
+                    return;
+                }
+                qubes_gui::MSG_KEYPRESS => {
+                    let mut m = qubes_gui::Button::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    println!("Key pressed: {:?}", m);
+                }
+                qubes_gui::MSG_BUTTON => {
+                    let mut m = qubes_gui::Button::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    println!("Button event: {:?}", m);
+                }
+                qubes_gui::MSG_CLIPBOARD_REQ => println!("clipboard data requested!"),
+                qubes_gui::MSG_CLIPBOARD_DATA => println!("clipboard data reply!"),
+                qubes_gui::MSG_KEYMAP_NOTIFY => {
+                    let mut m = qubes_gui::KeymapNotify::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    println!("Keymap notification: {:?}", m);
+                }
+                qubes_gui::MSG_MAP => {
+                    let mut m = qubes_gui::MapInfo::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    println!("Map event: {:?}", m);
+                }
+                qubes_gui::MSG_CONFIGURE => {
+                    let mut m = qubes_gui::Configure::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    println!("Configure event: {:?}", m);
+                }
+                qubes_gui::MSG_FOCUS => {
+                    let mut m = qubes_gui::Focus::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    println!("Focus event: {:?}", m);
+                }
+                _ => println!("Got an event! Header {:?}, body {:?}", e, body),
+            },
             Poll::Ready(Err(e)) => panic!("Got an error: {:?}", e),
         }
         let mut s = [
