@@ -96,25 +96,13 @@ fn main() {
             },
             Poll::Ready(Err(e)) => panic!("Got an error: {:?}", e),
         }
-        let mut s = [
-            libc::pollfd {
-                fd: vchan.client().as_raw_fd(),
-                events: libc::POLLIN | libc::POLLOUT | libc::POLLHUP | libc::POLLPRI,
-                revents: 0,
-            },
-            libc::pollfd {
-                fd: 0,
-                events: libc::POLLIN | libc::POLLOUT | libc::POLLHUP | libc::POLLPRI,
-                revents: 0,
-            },
-        ];
-        match unsafe { poll(s.as_mut_ptr(), s.len().try_into().unwrap(), -1) } {
-            1 | 2 => {}
-            _ => panic!("poll(2) failed"),
-        }
-        if (s[1].revents & (libc::POLLIN | libc::POLLHUP)) != 0 {
-            println!("Got input on stdin, exiting");
-            break;
+        let mut s = [libc::pollfd {
+            fd: vchan.client().as_raw_fd(),
+            events: libc::POLLIN | libc::POLLOUT | libc::POLLHUP | libc::POLLPRI,
+            revents: 0,
+        }];
+        if unsafe { poll(s.as_mut_ptr(), 1, -1) } != 1 {
+            panic!("poll(2) failed")
         }
     }
 }
