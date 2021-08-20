@@ -141,9 +141,9 @@ impl Vchan {
                     }
                     ready -= size_of::<Header>();
                     let untrusted_len = u32_to_usize(header.untrusted_len);
-                    match qubes_gui::max_msg_length(header.ty) {
+                    match qubes_gui::msg_length_limits(header.ty) {
                         None => self.state = ReadState::Discard(untrusted_len),
-                        Some(max_len) if max_len >= untrusted_len => {
+                        Some(max_len) if max_len.contains(&untrusted_len) => {
                             // length was sanitized above
                             self.buffer.resize(untrusted_len, 0);
                             self.state = ReadState::ReadingBody(header, 0)

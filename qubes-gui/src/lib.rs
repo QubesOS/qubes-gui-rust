@@ -141,7 +141,7 @@ enum_const! {
     /// Message types
     pub enum Msg {
         /// A key has been pressed
-        (MSG_KEYPRESS, KeyPress) = 124,
+        (MSG_KEYPRESS, Keypress) = 124,
         /// A button has been pressed
         (MSG_BUTTON, Button),
         /// Motion has happened
@@ -479,33 +479,37 @@ impl_message! {
     (Cursor, MSG_CURSOR),
 }
 
-/// Gets the maximum length of a message of a given type, or `None` for an
-/// unknown message (for which there is no limit).
-pub fn max_msg_length(ty: u32) -> Option<usize> {
+/// Gets the length limits of a message of a given type, or `None` for an
+/// unknown message (for which there are no limits).
+pub fn msg_length_limits(ty: u32) -> Option<core::ops::RangeInclusive<usize>> {
     use core::mem::size_of;
     Some(match ty {
-        MSG_CLIPBOARD_DATA => MAX_CLIPBOARD_SIZE as _,
-        MSG_BUTTON => size_of::<Button>(),
-        MSG_MOTION => size_of::<Motion>(),
-        MSG_CROSSING => size_of::<Crossing>(),
-        MSG_FOCUS => size_of::<Focus>(),
-        MSG_CREATE => size_of::<Create>(),
-        MSG_DESTROY => 0,
-        MSG_MAP => size_of::<MapInfo>(),
-        MSG_UNMAP => 0,
-        MSG_CONFIGURE => size_of::<Configure>(),
-        MSG_MFNDUMP => 0,
-        MSG_SHMIMAGE => size_of::<ShmImage>(),
-        MSG_CLOSE => 0,
-        MSG_CLIPBOARD_REQ => 0,
-        MSG_SET_TITLE => size_of::<WMName>(),
-        MSG_KEYMAP_NOTIFY => size_of::<KeymapNotify>(),
-        MSG_DOCK => 0,
-        MSG_WINDOW_HINTS => size_of::<WindowHints>(),
-        MSG_WINDOW_FLAGS => size_of::<WindowFlags>(),
-        MSG_WINDOW_CLASS => size_of::<WMClass>(),
-        MSG_WINDOW_DUMP => size_of::<WindowDumpHeader>() + 4 * MAX_GRANT_REFS_COUNT as usize,
-        MSG_CURSOR => size_of::<Cursor>(),
+        MSG_CLIPBOARD_DATA => 0..=MAX_CLIPBOARD_SIZE as _,
+        MSG_BUTTON => size_of::<Button>()..=size_of::<Button>(),
+        MSG_KEYPRESS => size_of::<Keypress>()..=size_of::<Keypress>(),
+        MSG_MOTION => size_of::<Motion>()..=size_of::<Motion>(),
+        MSG_CROSSING => size_of::<Crossing>()..=size_of::<Crossing>(),
+        MSG_FOCUS => size_of::<Focus>()..=size_of::<Focus>(),
+        MSG_CREATE => size_of::<Create>()..=size_of::<Create>(),
+        MSG_DESTROY => 0..=0,
+        MSG_MAP => size_of::<MapInfo>()..=size_of::<MapInfo>(),
+        MSG_UNMAP => 0..=0,
+        MSG_CONFIGURE => size_of::<Configure>()..=size_of::<Configure>(),
+        MSG_MFNDUMP => 0..=4 * MAX_MFN_COUNT as usize,
+        MSG_SHMIMAGE => size_of::<ShmImage>()..=size_of::<ShmImage>(),
+        MSG_CLOSE => 0..=0,
+        MSG_CLIPBOARD_REQ => 0..=0,
+        MSG_SET_TITLE => size_of::<WMName>()..=size_of::<WMName>(),
+        MSG_KEYMAP_NOTIFY => size_of::<KeymapNotify>()..=size_of::<KeymapNotify>(),
+        MSG_DOCK => 0..=0,
+        MSG_WINDOW_HINTS => size_of::<WindowHints>()..=size_of::<KeymapNotify>(),
+        MSG_WINDOW_FLAGS => size_of::<WindowFlags>()..=size_of::<WindowFlags>(),
+        MSG_WINDOW_CLASS => size_of::<WMClass>()..=size_of::<WMClass>(),
+        MSG_WINDOW_DUMP => {
+            size_of::<WindowDumpHeader>()
+                ..=size_of::<WindowDumpHeader>() + 4 * MAX_GRANT_REFS_COUNT as usize
+        }
+        MSG_CURSOR => size_of::<Cursor>()..=size_of::<Cursor>(),
         MSG_EXECUTE | MSG_RESIZE | _ => return None,
     })
 }
