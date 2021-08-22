@@ -29,7 +29,12 @@ fn main() {
         )
         .unwrap();
     let buf = vchan.alloc_buffer(width, height).unwrap();
+    let shade = vec![0xFF00u32; (width * height / 2).try_into().unwrap()];
     buf.dump(vchan.client(), 50).unwrap();
+    buf.write(
+        qubes_castable::as_bytes(&shade[..]),
+        (width * height / 4).try_into().unwrap(),
+    );
     vchan
         .client()
         .send(
