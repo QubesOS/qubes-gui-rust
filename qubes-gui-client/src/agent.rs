@@ -295,3 +295,9 @@ pub fn new(peer: DomID) -> io::Result<Agent> {
 
 const IOCTL_GNTALLOC_ALLOC_GREF: std::os::raw::c_ulong = 0x184705;
 const IOCTL_GNTALLOC_DEALLOC_GREF: std::os::raw::c_ulong = 0x104706;
+
+impl std::os::unix::io::AsRawFd for Agent {
+    fn as_raw_fd(&self) -> std::os::raw::c_int {
+        self.inner.as_raw_fd()
+    }
+}
