@@ -81,9 +81,10 @@ impl Client {
         let (vchan, conf) = buffer::Vchan::agent(domain)?;
         Ok((Self { vchan }, conf))
     }
+}
 
-    /// Gets the raw file descriptor
-    pub fn as_raw_fd(&self) -> std::os::raw::c_int {
+impl std::os::unix::io::AsRawFd for Client {
+    fn as_raw_fd(&self) -> std::os::raw::c_int {
         self.vchan.as_raw_fd()
     }
 }

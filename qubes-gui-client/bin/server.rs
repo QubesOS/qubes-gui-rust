@@ -1,9 +1,8 @@
-use libc::{poll, pollfd};
 use qubes_castable::Castable;
 use std::convert::TryInto;
 // use std::fs::File;
 // use std::os::raw::{c_int, c_short, c_ulong};
-// use std::os::unix::io::AsRawFd as _;
+use std::os::unix::io::AsRawFd as _;
 use std::task::Poll;
 
 fn main() {
@@ -105,7 +104,7 @@ fn main() {
             events: libc::POLLIN | libc::POLLOUT | libc::POLLHUP | libc::POLLPRI,
             revents: 0,
         }];
-        if unsafe { poll(s.as_mut_ptr(), 1, -1) } != 1 {
+        if unsafe { libc::poll(s.as_mut_ptr(), 1, -1) } != 1 {
             panic!("poll(2) failed")
         }
     }
