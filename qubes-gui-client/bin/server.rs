@@ -27,12 +27,12 @@ fn main() {
             50.try_into().unwrap(),
         )
         .unwrap();
-    let buf = vchan.alloc_buffer(width, height).unwrap();
-    let shade = vec![0xFF00u32; (width * height / 2).try_into().unwrap()];
+    let mut buf = vchan.alloc_buffer(width, height).unwrap();
+    let mut shade = vec![0xFF00u32; (width * height / 2).try_into().unwrap()];
     buf.dump(vchan.client(), 50).unwrap();
     buf.write(
         qubes_castable::as_bytes(&shade[..]),
-        (width * height / 4).try_into().unwrap(),
+        (width * height).try_into().unwrap(),
     );
     vchan
         .client()
@@ -89,11 +89,39 @@ fn main() {
                     let mut m = qubes_gui::Configure::default();
                     m.as_mut_bytes().copy_from_slice(body);
                     println!("Configure event: {:?}", m);
+                    m.override_redirect = 0;
+                    let qubes_gui::WindowSize { width, height } = m.rectangle.size;
+                    drop(std::mem::replace(
+                        &mut buf,
+                        vchan.alloc_buffer(width, height).unwrap(),
+                    ));
+                    shade.resize((width * height / 2).try_into().unwrap(), 0xFF00u32);
+                    buf.write(
+                        qubes_castable::as_bytes(&shade[..]),
+                        (width * height / 4 * 4).try_into().unwrap(),
+                    );
+                    buf.dump(vchan.client(), e.window).unwrap();
+                    let w = e.window.try_into().unwrap();
+                    vchan.client().send(&m, w).unwrap();
+                    vchan
+                        .client()
+                        .send(
+                            &qubes_gui::ShmImage {
+                                rectangle: m.rectangle,
+                            },
+                            w,
+                        )
+                        .unwrap()
                 }
                 qubes_gui::MSG_FOCUS => {
                     let mut m = qubes_gui::Focus::default();
                     m.as_mut_bytes().copy_from_slice(body);
                     println!("Focus event: {:?}", m);
+                }
+                qubes_gui::MSG_WINDOW_FLAGS => {
+                    let mut m = qubes_gui::WindowFlags::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    println!("Window manager flags have changed: {:?}", m);
                 }
                 _ => println!("Got an event! Header {:?}, body {:?}", e, body),
             },
