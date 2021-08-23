@@ -140,13 +140,13 @@ enum_const! {
     #[repr(u32)]
     /// Message types
     pub enum Msg {
-        /// A key has been pressed
+        /// Daemon ⇒ agent: A key has been pressed
         (MSG_KEYPRESS, Keypress) = 124,
-        /// A button has been pressed
+        /// Daemon ⇒ agent: A button has been pressed
         (MSG_BUTTON, Button),
-        /// Motion has happened
+        /// Daemon ⇒ agent: Pointer has moved.
         (MSG_MOTION, Motion),
-        /// Crossing
+        /// Daemon ⇒ agent: Pointer has crossed edge of window.
         (MSG_CROSSING, Crossing),
         /// Daemon ⇒ agent: A window has just acquired focus.
         (MSG_FOCUS, Focus),
@@ -173,7 +173,7 @@ enum_const! {
         (MSG_EXECUTE, Execute),
         /// Daemon ⇒ agent: Request clipboard data.
         (MSG_CLIPBOARD_REQ, ClipboardReq),
-        /// Agent ⇒ daemon: Reply with clipboard data.
+        /// Bidirectional: Clipboard data
         (MSG_CLIPBOARD_DATA, ClipboardData),
         /// Agent ⇒ daemon: Set the title of a window.  Called MSG_WMNAME in C.
         (MSG_SET_TITLE, SetTitle),
@@ -183,7 +183,7 @@ enum_const! {
         (MSG_DOCK, Dock) = 143,
         /// Agent ⇒ daemon: Set window manager hints.
         (MSG_WINDOW_HINTS, WindowHints),
-        /// Agent ⇒ daemon: Set window manager flags.
+        /// Bidirectional: Set window manager flags.
         (MSG_WINDOW_FLAGS, WindowFlags),
         /// Agent ⇒ daemon: Set window class.
         (MSG_WINDOW_CLASS, WindowClass),
