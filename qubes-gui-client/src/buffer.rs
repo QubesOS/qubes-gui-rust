@@ -121,6 +121,7 @@ impl Vchan {
         let mut ready = self.vchan.data_ready();
         loop {
             if ready == 0 {
+                self.vchan.wait();
                 break Ok(None);
             }
             match self.state {
@@ -156,7 +157,10 @@ impl Vchan {
                         }
                     }
                 }
-                ReadState::ReadingHeader => break Ok(None),
+                ReadState::ReadingHeader => {
+                    self.vchan.wait();
+                    break Ok(None);
+                }
                 ReadState::Discard(len) => {
                     self.buffer.resize(256.min(len).max(self.buffer.len()), 0);
                     let buf_len = self.buffer.len();

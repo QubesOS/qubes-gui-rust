@@ -126,7 +126,9 @@ impl Vchan {
         s as _
     }
 
-    /// Wait for I/O in some direction to be possible.  This function is blocking.
+    /// Wait for I/O in some direction to be possible.  This function is
+    /// blocking, unless an event has happened on the file descriptor, in which
+    /// case it does not block and clears the event pending flag.
     pub fn wait(&self) {
         unsafe { vchan_sys::libvchan_wait(self.inner) };
     }
