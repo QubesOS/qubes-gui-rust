@@ -146,10 +146,19 @@ impl Vchan {
                     ready -= size_of::<Header>();
                     let untrusted_len = u32_to_usize(header.untrusted_len);
                     match qubes_gui::msg_length_limits(header.ty) {
+                        // See below comment regarding empty messages!
+                        None if untrusted_len == 0 => continue,
                         None => self.state = ReadState::Discard(untrusted_len),
                         Some(max_len) if max_len.contains(&untrusted_len) => {
                             // length was sanitized above
                             self.buffer.resize(untrusted_len, 0);
+                            // If the message has an empty body, **do not wait for a body byte to
+                            // be sent**, as none will ever arrive.  This will cause the code to
+                            // run one message behind, but only for empty messages!
+                            if untrusted_len == 0 {
+                                self.state = ReadState::ReadingHeader;
+                                break Ok(Some((header, &self.buffer[..])));
+                            }
                             self.state = ReadState::ReadingBody(header, 0)
                         }
                         Some(_) => {
