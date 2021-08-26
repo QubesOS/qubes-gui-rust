@@ -292,7 +292,8 @@ qubes_castable::castable! {
         override_redirect: u32,
     }
 
-    /// Agent ⇒ daemon: Create a window
+    /// Agent ⇒ daemon: Create a window.  This should always be followed by a
+    /// [`Configure`] message.
     pub struct Create {
         /// Rectangle the window is to occupy
         rectangle: Rectangle,
