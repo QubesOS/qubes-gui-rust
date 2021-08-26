@@ -387,6 +387,15 @@ qubes_castable::castable! {
         data: [u8; 128],
     }
 
+    /// Agent ⇒ daemon: Unmap the window
+    pub struct Unmap {}
+
+    /// Agent ⇒ daemon: Dock the window
+    pub struct Dock {}
+
+    /// Agent ⇒ daemon: Destroy the window
+    pub struct Destroy {}
+
     /// Daemon ⇒ agent: Keymap change notification
     pub struct KeymapNotify {
         /// X11 keymap returned by XQueryKeymap()
@@ -488,6 +497,9 @@ impl_message! {
     (WMClass, MSG_WINDOW_CLASS),
     (WindowDumpHeader, MSG_WINDOW_DUMP),
     (Cursor, MSG_CURSOR),
+    (Destroy, MSG_DESTROY),
+    (Dock, MSG_DOCK),
+    (Unmap, MSG_UNMAP),
 }
 
 /// Gets the length limits of a message of a given type, or `None` for an
