@@ -210,6 +210,16 @@ pub enum WindowHintsFlags {
     PBaseSize = 1 << 8,
 }
 
+/// Flags for [`WindowFlags`].  These are a bitmask.
+pub enum WindowFlag {
+    /// Fullscreen request.  This may or may not be honored.
+    Fullscreen = 1 << 0,
+    /// Demands attention
+    DemandsAttention = 1 << 1,
+    /// Minimize
+    Minimize = 1 << 2,
+}
+
 /// Trait for Qubes GUI structs, specifying the message number.
 pub trait Message: qubes_castable::Castable + core::default::Default {
     /// The kind of the message
