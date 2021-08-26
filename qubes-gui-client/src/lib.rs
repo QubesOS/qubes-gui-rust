@@ -57,7 +57,11 @@ impl Client {
         Ok(())
     }
 
-    /// Window dump
+    /// Acknowledge an event (as reported by poll(2), epoll(2), or similar).
+    /// Must be called before performing any I/O.
+    pub fn wait(&mut self) {
+        self.vchan.wait()
+    }
 
     /// If a message header is read successfully, `Poll::Ready(Ok(r))` is returned, and
     /// `r` can be used to access the message body.  If there is not enough data, `Poll::Pending`

@@ -113,6 +113,10 @@ impl Vchan {
         })
     }
 
+    pub fn wait(&mut self) {
+        self.vchan.wait()
+    }
+
     /// If there is nothing to read, return `Ok(None)` immediately; otherwise,
     /// returns `Ok(Some(msg))` if a complete message has been read, or `Err`
     /// if something went wrong.
@@ -121,7 +125,6 @@ impl Vchan {
         let mut ready = self.vchan.data_ready();
         loop {
             if ready == 0 {
-                self.vchan.wait();
                 break Ok(None);
             }
             match self.state {
@@ -157,10 +160,7 @@ impl Vchan {
                         }
                     }
                 }
-                ReadState::ReadingHeader => {
-                    self.vchan.wait();
-                    break Ok(None);
-                }
+                ReadState::ReadingHeader => break Ok(None),
                 ReadState::Discard(len) => {
                     self.buffer.resize(256.min(len).max(self.buffer.len()), 0);
                     let buf_len = self.buffer.len();
