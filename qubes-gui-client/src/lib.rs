@@ -24,6 +24,7 @@
 
 use qubes_castable::Castable as _;
 pub use qubes_gui;
+use std::collections::BTreeSet;
 use std::io;
 use std::num::NonZeroU32;
 use std::task::Poll;
@@ -36,6 +37,8 @@ mod buffer;
 #[derive(Debug)]
 pub struct Client {
     vchan: buffer::Vchan,
+    set: BTreeSet<NonZeroU32>,
+    agent: bool,
 }
 
 impl Client {
@@ -51,6 +54,21 @@ impl Client {
             window: window.into(),
             untrusted_len: std::mem::size_of_val(message) as u32,
         };
+        if self.agent {
+            if header.ty == qubes_gui::MSG_CREATE {
+                assert!(self.set.insert(window), "Creating a window already in map!");
+            } else if header.ty == qubes_gui::MSG_DESTROY {
+                assert!(
+                    self.set.remove(&window),
+                    "Trying to delete window not in map!"
+                );
+            } else {
+                assert!(
+                    self.set.contains(&window),
+                    "Sending message on nonexistant window!"
+                )
+            }
+        }
         // FIXME this is slow
         self.vchan.write(header.as_bytes())?;
         self.vchan.write(message.as_bytes())?;
@@ -77,13 +95,24 @@ impl Client {
     /// Creates an daemon instance
     pub fn daemon(domain: u16) -> io::Result<Self> {
         let vchan = buffer::Vchan::daemon(domain)?;
-        Ok(Self { vchan })
+        Ok(Self {
+            vchan,
+            set: Default::default(),
+            agent: false,
+        })
     }
 
     /// Creates a agent instance
     pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
         let (vchan, conf) = buffer::Vchan::agent(domain)?;
-        Ok((Self { vchan }, conf))
+        Ok((
+            Self {
+                vchan,
+                set: Default::default(),
+                agent: true,
+            },
+            conf,
+        ))
     }
 }
 
