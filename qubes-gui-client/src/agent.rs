@@ -118,9 +118,12 @@ impl Buffer {
             .len()
             .checked_add(offset)
             .expect("offset + buffer length overflows");
-        if upper_bound > self.dimensions.buffer_size() {
-            panic!("Copying to out of bounds memory")
-        }
+        assert!(
+            upper_bound <= self.dimensions.buffer_size(),
+            "Copying to out of bounds memory"
+        );
+        assert!(buffer.len() % 4 == 0, "Copying fractional pixels");
+        assert!(offset % 4 == 0, "Offset not integer pixel");
 
         unsafe {
             std::ptr::copy_nonoverlapping(
