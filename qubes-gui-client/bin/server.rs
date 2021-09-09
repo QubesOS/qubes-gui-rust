@@ -1,11 +1,8 @@
-use qubes_castable::Castable;
+use qubes_gui_client::agent::DaemonToAgentEvent as Event;
 use std::convert::TryInto;
-// use std::fs::File;
-// use std::os::raw::{c_int, c_short, c_ulong};
 use std::os::unix::io::AsRawFd as _;
-use std::task::Poll;
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let (width, height) = (0x200, 0x100);
     // let buffer: Vec<u32> = vec![0; (width * height).try_into().unwrap()];
     let mut vchan = qubes_gui_client::agent::new(0).unwrap();
@@ -45,52 +42,33 @@ fn main() {
         )
         .unwrap();
     loop {
-        match vchan.client().read_header() {
-            Poll::Pending => {}
-            Poll::Ready(Ok((e, body))) => match e.ty {
-                qubes_gui::MSG_MOTION => {
-                    let mut m = qubes_gui::Motion::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    println!("Motion event: {:?}", m)
-                }
-                qubes_gui::MSG_CROSSING => {
-                    let mut m = qubes_gui::Crossing::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    println!("Crossing event: {:?}", m)
-                }
-                qubes_gui::MSG_CLOSE => {
-                    assert!(body.is_empty());
+        vchan.client().wait();
+        while let Some(ev) = vchan.client().next_event()? {
+            match ev {
+                Event::Motion { window: _, event } => println!("Motion event: {:?}", event),
+                Event::Crossing { window: _, event } => println!("Crossing event: {:?}", event),
+                Event::Close { window: _ } => {
                     println!("Got a close event, exiting!");
-                    return;
+                    return Ok(());
                 }
-                qubes_gui::MSG_KEYPRESS => {
-                    let mut m = qubes_gui::Button::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    println!("Key pressed: {:?}", m);
+                Event::Keypress { window: _, event } => println!("Key pressed: {:?}", event),
+                Event::Button { window: _, event } => println!("Button event: {:?}", event),
+                Event::Copy => println!("clipboard data requested!"),
+                Event::Paste { untrusted_data } => {
+                    println!("clipboard paste, data {:?}", untrusted_data)
                 }
-                qubes_gui::MSG_BUTTON => {
-                    let mut m = qubes_gui::Button::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    println!("Button event: {:?}", m);
-                }
-                qubes_gui::MSG_CLIPBOARD_REQ => println!("clipboard data requested!"),
-                qubes_gui::MSG_CLIPBOARD_DATA => println!("clipboard data reply!"),
-                qubes_gui::MSG_KEYMAP_NOTIFY => {
-                    let mut m = qubes_gui::KeymapNotify::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    println!("Keymap notification: {:?}", m);
-                }
-                qubes_gui::MSG_MAP => {
-                    let mut m = qubes_gui::MapInfo::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    println!("Map event: {:?}", m);
-                }
-                qubes_gui::MSG_CONFIGURE => {
-                    let mut m = qubes_gui::Configure::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    println!("Configure event: {:?}", m);
-                    m.override_redirect = 0;
-                    let qubes_gui::WindowSize { width, height } = m.rectangle.size;
+                Event::Keymap { new_keymap } => println!("New keymap: {:?}", new_keymap),
+                Event::Redraw {
+                    window: _,
+                    portion_to_redraw,
+                } => println!("Map event: {:?}", portion_to_redraw),
+                Event::Configure {
+                    window,
+                    new_size_and_position,
+                } => {
+                    println!("Configure event: {:?}", new_size_and_position);
+                    let rectangle = new_size_and_position.rectangle;
+                    let qubes_gui::WindowSize { width, height } = rectangle.size;
                     drop(std::mem::replace(
                         &mut buf,
                         vchan.alloc_buffer(width, height).unwrap(),
@@ -100,32 +78,20 @@ fn main() {
                         qubes_castable::as_bytes(&shade[..]),
                         (width * height / 4 * 4).try_into().unwrap(),
                     );
-                    buf.dump(vchan.client(), e.window).unwrap();
-                    let w = e.window.try_into().unwrap();
-                    vchan.client().send(&m, w).unwrap();
+                    buf.dump(vchan.client(), window).unwrap();
+                    let w = window.try_into().unwrap();
+                    vchan.client().send(&new_size_and_position, w).unwrap();
                     vchan
                         .client()
-                        .send(
-                            &qubes_gui::ShmImage {
-                                rectangle: m.rectangle,
-                            },
-                            w,
-                        )
+                        .send(&qubes_gui::ShmImage { rectangle }, w)
                         .unwrap()
                 }
-                qubes_gui::MSG_FOCUS => {
-                    let mut m = qubes_gui::Focus::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    println!("Focus event: {:?}", m);
+                Event::Focus { window: _, event } => println!("Focus event: {:?}", event),
+                Event::WindowFlags { window: _, flags } => {
+                    println!("Window manager flags have changed: {:?}", flags)
                 }
-                qubes_gui::MSG_WINDOW_FLAGS => {
-                    let mut m = qubes_gui::WindowFlags::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    println!("Window manager flags have changed: {:?}", m);
-                }
-                _ => println!("Got an event! Header {:?}, body {:?}", e, body),
-            },
-            Poll::Ready(Err(e)) => panic!("Got an error: {:?}", e),
+                _ => println!("Got an unknown event!"),
+            }
         }
         let mut s = [libc::pollfd {
             fd: vchan.client().as_raw_fd(),
