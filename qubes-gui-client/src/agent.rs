@@ -1,306 +1,132 @@
-//! Grant-table manipulation code
+//! GUI agent dispatch logic
+//!
+//! This contains a trait that a GUI agent must implement, which includes
+//! callbacks for the various messages an agent must handle.  It also includes
+//! dispatch logic for incoming messages.
 
-use std::io;
-use std::os::unix::io::AsRawFd as _;
-use std::rc::{Rc, Weak};
+use qubes_castable::Castable as _;
+mod io;
+// FIXME move this into separate modules
+pub use io::*;
 
-type DomID = u16;
+/// The trait that a GUI agent must implement.
+pub trait AgentTrait {
+    /// Called when a motion event is received on the vchan
+    fn motion(&mut self, window: u32, event: qubes_gui::Motion) -> std::io::Result<()>;
 
-/// A GUI agent instance
-pub struct Agent {
-    inner: super::Client,
-    alloc: Rc<std::fs::File>,
-    conf: qubes_gui::XConf,
-    peer: DomID,
+    /// The pointer has entered or left a window.
+    fn crossing(&mut self, window: u32, event: qubes_gui::Crossing) -> std::io::Result<()>;
+
+    /// The user wishes to close a window
+    fn close(&mut self, window: u32) -> std::io::Result<()>;
+
+    /// A key has been pressed or released
+    fn keypress(&mut self, window: u32, event: qubes_gui::Keypress) -> std::io::Result<()>;
+
+    /// A button has been pressed or released
+    fn button(&mut self, window: u32, button: qubes_gui::Button) -> std::io::Result<()>;
+
+    /// The GUI daemon has requested the contents of the clipboard.  The agent
+    /// is expected to send a [`qubes_gui::MSG_CLIPBOARD_DATA`] message with the
+    /// requested data.
+    fn copy(&mut self) -> std::io::Result<()>;
+
+    /// Set the contents of the clipboard.
+    fn paste(&mut self, paste_buffer: &str) -> std::io::Result<()>;
+
+    /// The keymap has changed.
+    fn keymap(&mut self, keymap: qubes_gui::KeymapNotify) -> std::io::Result<()>;
+
+    /// The agent must redraw a portion of the display
+    fn redraw(&mut self, window: u32, portion_to_redraw: qubes_gui::MapInfo)
+        -> std::io::Result<()>;
+
+    /// A window has been moved and/or resized.
+    fn configure(
+        &mut self,
+        window: u32,
+        new_size_and_positon: qubes_gui::Configure,
+    ) -> std::io::Result<()>;
+
+    /// A window has gained or lost focus
+    fn focus(&mut self, window: u32, event: qubes_gui::Focus) -> std::io::Result<()>;
+
+    /// Window manager flags have changed
+    fn window_flags(&mut self, window: u32, flags: qubes_gui::WindowFlags) -> std::io::Result<()>;
 }
 
-/// A window sent to the GUI daemon
-pub struct Buffer {
-    inner: Vec<u64>,
-    alloc: Weak<std::fs::File>,
-    ptr: *mut libc::c_void,
-    offset: u64,
-    dimensions: dimensions::WindowDimensions,
-}
-
-mod dimensions {
-    use std::io;
-    use std::mem::size_of;
-    pub(super) struct WindowDimensions {
-        width: u32,
-        height: u32,
-    }
-
-    impl WindowDimensions {
-        pub fn new(width: u32, height: u32) -> io::Result<Self> {
-            let _: [u8; 0] = [0u8; (size_of::<u32>() > size_of::<usize>()) as usize
-                + ((u32::MAX / 4) / qubes_gui::MAX_WINDOW_WIDTH <= qubes_gui::MAX_WINDOW_HEIGHT)
-                    as usize];
-            if width > qubes_gui::MAX_WINDOW_WIDTH || height > qubes_gui::MAX_WINDOW_HEIGHT {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!(
-                        "Window dimensions {}x{} too large (limit is {}x{})",
-                        width,
-                        height,
-                        qubes_gui::MAX_WINDOW_WIDTH,
-                        qubes_gui::MAX_WINDOW_HEIGHT
-                    ),
-                ));
-            }
-            if width == 0 || height == 0 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!(
-                        "Window dimensions {}x{} not valid: neither width nor height may be zero",
-                        width, height,
-                    ),
-                ));
-            }
-            Ok(Self { width, height })
-        }
-
-        pub fn buffer_size(&self) -> usize {
-            assert!(self.width <= qubes_gui::MAX_WINDOW_WIDTH, "checked earlier");
-            assert!(
-                self.width <= qubes_gui::MAX_WINDOW_HEIGHT,
-                "checked earlier"
-            );
-            (self.width * self.height * 4) as usize
-        }
-
-        pub fn grefs(&self) -> u32 {
-            (self.buffer_size() as u32 + qubes_gui::XC_PAGE_SIZE - 1) / qubes_gui::XC_PAGE_SIZE
-        }
-
-        pub fn width(&self) -> u32 {
-            self.width
-        }
-
-        pub fn height(&self) -> u32 {
-            self.height
-        }
-    }
-}
-
-fn cast_u32(s: u32) -> usize {
-    s as _
-}
-
-impl Buffer {
-    /// Obtains a slice containing the exported grant references
-    pub fn grants(&self) -> &[u32] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self.inner.as_ptr() as *const u32).add(4),
-                cast_u32(self.dimensions.grefs()),
-            )
-        }
-    }
-
-    /// Returns the width (in pixels) of this buffer
-    pub fn width(&self) -> u32 {
-        self.dimensions.width()
-    }
-
-    /// Returns the height (in pixels) of this buffer
-    pub fn height(&self) -> u32 {
-        self.dimensions.height()
-    }
-
-    /// Overwrite the specified offset in the buffer
+impl super::Client {
+    /// Dispatch events received by this [`super::Client`]
     ///
     /// # Panics
     ///
-    /// Panics if the offset is out of bounds.
-    pub fn write(&self, buffer: &[u8], offset: usize) {
-        let upper_bound = buffer
-            .len()
-            .checked_add(offset)
-            .expect("offset + buffer length overflows");
-        assert!(
-            upper_bound <= self.dimensions.buffer_size(),
-            "Copying to out of bounds memory"
-        );
-        assert!(buffer.len() % 4 == 0, "Copying fractional pixels");
-        assert!(offset % 4 == 0, "Offset not integer pixel");
-
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                buffer.as_ptr(),
-                self.ptr.add(offset) as *mut u8,
-                buffer.len(),
-            )
-        }
-    }
-
-    /// Sends the contents of the window to the GUI agent
-    pub fn dump(&self, client: &mut super::Client, window: u32) -> io::Result<()> {
-        let total_length = self.dimensions.grefs() * 4
-            + (std::mem::size_of::<qubes_gui::WindowDumpHeader>() as u32);
-        let header = qubes_gui::Header {
-            ty: qubes_gui::MSG_WINDOW_DUMP,
-            window,
-            untrusted_len: total_length,
-        };
-        assert!(self.inner.capacity() * std::mem::size_of::<u64>() >= total_length as _);
-        let msg = unsafe {
-            std::slice::from_raw_parts(self.inner.as_ptr() as *const u8, cast_u32(total_length))
-        };
-        client
-            .vchan
-            .write(qubes_castable::Castable::as_bytes(&header))?;
-        client.vchan.write(msg)?;
-        Ok(())
-    }
-}
-
-impl Drop for Buffer {
-    fn drop(&mut self) {
-        let p = ioctl_gntalloc_dealloc_gref {
-            index: self.offset,
-            count: self.dimensions.grefs(),
-        };
-        assert!(self.ptr as usize % 4096 == 0, "Unaligned pointer???");
-        if unsafe { libc::munmap(self.ptr, self.dimensions.buffer_size()) } != 0 {
-            panic!(
-                "the inputs are correct, and this is not punching a hole in an \
-                 existing mapping, so munmap() cannot fail; qed; error {}",
-                io::Error::last_os_error()
-            )
-        }
-        if let Some(alloc) = self.alloc.upgrade() {
-            unsafe {
-                assert_eq!(
-                    libc::ioctl(alloc.as_raw_fd(), IOCTL_GNTALLOC_DEALLOC_GREF, &p),
-                    0,
-                    "Releasing a grant reference never fails; qed",
-                );
-            }
-        } // otherwise, the kernel has done the cleanup when the FD was closed
-    }
-}
-
-#[repr(C)]
-#[allow(nonstandard_style)]
-struct ioctl_gntalloc_alloc_gref {
-    domid: u16,
-    flags: u16,
-    count: u32,
-    index: u64,
-    gref_ids: [u32; 1],
-}
-
-#[repr(C)]
-#[allow(nonstandard_style)]
-struct ioctl_gntalloc_dealloc_gref {
-    index: u64,
-    count: u32,
-}
-
-impl Agent {
-    /// Allocate a buffer to share with the GUI daemon.
-    pub fn alloc_buffer(&mut self, width: u32, height: u32) -> io::Result<Buffer> {
-        let dimensions = dimensions::WindowDimensions::new(width, height)?;
-        assert_eq!(qubes_gui::XC_PAGE_SIZE % 4, 0);
-        let grefs = dimensions.grefs();
-        assert!(
-            grefs <= qubes_gui::MAX_GRANT_REFS_COUNT,
-            "excessive width or height detected above"
-        );
-        let mut channels: Vec<u64> = Vec::with_capacity((cast_u32(grefs) + 5) / 2);
-        unsafe {
-            let ptr = channels.as_mut_ptr() as *mut u8;
-            std::ptr::write(ptr as *mut u16, self.peer);
-            std::ptr::write((ptr as *mut u16).add(1), 1);
-            std::ptr::write((ptr as *mut u32).add(1), grefs);
-            if (grefs & 1) != 0 {
-                assert_eq!(channels.capacity() * 2, cast_u32(grefs) + 5);
-                std::ptr::write((ptr as *mut u32).add(cast_u32(grefs) + 4), 0)
-            } else {
-                assert_eq!(channels.capacity() * 2, cast_u32(grefs) + 4);
-            }
-            let res = libc::ioctl(
-                self.alloc.as_raw_fd(),
-                IOCTL_GNTALLOC_ALLOC_GREF,
-                ptr as *mut ioctl_gntalloc_alloc_gref,
-            );
-            if res != 0 {
-                assert_eq!(res, -1, "invalid return value from ioctl()");
-                return Err(io::Error::last_os_error());
-            }
-            let offset = std::ptr::read((ptr as *const u64).offset(1));
-            let ptr = libc::mmap(
-                std::ptr::null_mut(),
-                dimensions.buffer_size(),
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_SHARED,
-                self.alloc.as_raw_fd(),
-                offset as i64,
-            );
-            if ptr == libc::MAP_FAILED {
-                let p = ioctl_gntalloc_dealloc_gref {
-                    index: offset,
-                    count: grefs,
-                };
-                assert_eq!(
-                    libc::ioctl(self.alloc.as_raw_fd(), IOCTL_GNTALLOC_DEALLOC_GREF, &p),
-                    0,
-                    "Failed to release grant references"
-                );
-                Err(io::Error::last_os_error())
-            } else {
-                let channel_ptr = channels.as_mut_ptr() as *mut u32;
-                // overwrite the struct passed to Linux, which is no longer
-                // needed, with the GUI message
-                std::ptr::write(channel_ptr, qubes_gui::WINDOW_DUMP_TYPE_GRANT_REFS);
-                std::ptr::write(channel_ptr.add(1), width);
-                std::ptr::write(channel_ptr.add(2), height);
-                std::ptr::write(channel_ptr.add(3), 24);
-                Ok(Buffer {
-                    inner: channels,
-                    alloc: Rc::downgrade(&self.alloc),
-                    ptr,
-                    offset,
-                    dimensions,
-                })
+    /// Panics if called on a daemon instance.
+    pub fn dispatch_events(&mut self, implementation: &mut dyn AgentTrait) -> std::io::Result<()> {
+        self.wait();
+        loop {
+            let (header, body) = match self.vchan.read_header() {
+                Ok(None) => break Ok(()),
+                Err(e) => break Err(e),
+                Ok(Some(s)) => s,
+            };
+            match header.ty {
+                qubes_gui::MSG_MOTION => {
+                    let mut m = qubes_gui::Motion::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    implementation.motion(header.window, m)?
+                }
+                qubes_gui::MSG_CROSSING => {
+                    let mut m = qubes_gui::Crossing::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    implementation.crossing(header.window, m)?
+                }
+                qubes_gui::MSG_CLOSE => {
+                    assert!(body.is_empty());
+                    implementation.close(header.window)?
+                }
+                qubes_gui::MSG_KEYPRESS => {
+                    let mut m = qubes_gui::Keypress::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    implementation.keypress(header.window, m)?
+                }
+                qubes_gui::MSG_BUTTON => {
+                    let mut m = qubes_gui::Button::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    implementation.button(header.window, m)?
+                }
+                qubes_gui::MSG_CLIPBOARD_REQ => implementation.copy()?,
+                qubes_gui::MSG_CLIPBOARD_DATA => {
+                    implementation.paste(std::str::from_utf8(body).map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+                    })?)?
+                }
+                qubes_gui::MSG_KEYMAP_NOTIFY => {
+                    let mut m = qubes_gui::KeymapNotify::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    implementation.keymap(m)?
+                }
+                qubes_gui::MSG_MAP => {
+                    let mut m = qubes_gui::MapInfo::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    implementation.redraw(header.window, m)?
+                }
+                qubes_gui::MSG_CONFIGURE => {
+                    let mut m = qubes_gui::Configure::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    implementation.configure(header.window, m)?
+                }
+                qubes_gui::MSG_FOCUS => {
+                    let mut m = qubes_gui::Focus::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    implementation.focus(header.window, m)?
+                }
+                qubes_gui::MSG_WINDOW_FLAGS => {
+                    let mut m = qubes_gui::WindowFlags::default();
+                    m.as_mut_bytes().copy_from_slice(body);
+                    implementation.window_flags(header.window, m)?
+                }
+                _ => {}
             }
         }
-    }
-
-    /// Obtains a reference to the client
-    pub fn client(&mut self) -> &mut super::Client {
-        &mut self.inner
-    }
-
-    /// Obtains the configuration provided by the GUI daemon
-    pub fn conf(&self) -> qubes_gui::XConf {
-        self.conf
-    }
-}
-
-/// Creates a GUI agent
-pub fn new(peer: DomID) -> io::Result<Agent> {
-    let alloc = Rc::new(
-        std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open("/dev/xen/gntalloc")?,
-    );
-    let (inner, conf) = super::Client::agent(peer)?;
-    Ok(Agent {
-        alloc,
-        inner,
-        conf,
-        peer,
-    })
-}
-
-const IOCTL_GNTALLOC_ALLOC_GREF: std::os::raw::c_ulong = 0x184705;
-const IOCTL_GNTALLOC_DEALLOC_GREF: std::os::raw::c_ulong = 0x104706;
-
-impl std::os::unix::io::AsRawFd for Agent {
-    fn as_raw_fd(&self) -> std::os::raw::c_int {
-        self.inner.as_raw_fd()
     }
 }
