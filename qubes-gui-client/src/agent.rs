@@ -9,89 +9,84 @@ mod io;
 // FIXME move this into separate modules
 pub use io::*;
 
-/// The trait that a GUI agent must implement.
-pub trait AgentTrait {
-    /// Called when a motion event is received on the vchan
-    fn motion(
-        &mut self,
-        agent: &mut super::Client,
+/// An event that a GUI agent must handle
+#[non_exhaustive]
+pub enum DaemonToAgentEvent<'a> {
+    /// The pointer has moved
+    Motion {
+        /// The window the event is sent to
         window: u32,
+        /// The contents of the event
         event: qubes_gui::Motion,
-    ) -> std::io::Result<()>;
-
+    },
     /// The pointer has entered or left a window.
-    fn crossing(
-        &mut self,
-        agent: &mut super::Client,
+    Crossing {
+        /// The window the event is sent to
         window: u32,
+        /// The contents of the event
         event: qubes_gui::Crossing,
-    ) -> std::io::Result<()>;
-
+    },
     /// The user wishes to close a window
-    fn close(&mut self, agent: &mut super::Client, window: u32) -> std::io::Result<()>;
-
+    Close {
+        /// The window the event is sent to
+        window: u32,
+    },
     /// A key has been pressed or released
-    fn keypress(
-        &mut self,
-        agent: &mut super::Client,
+    Keypress {
+        /// The window the event is sent to
         window: u32,
+        /// The contents of the event
         event: qubes_gui::Keypress,
-    ) -> std::io::Result<()>;
-
+    },
     /// A button has been pressed or released
-    fn button(
-        &mut self,
-        agent: &mut super::Client,
+    Button {
+        /// The window the event is sent to
         window: u32,
-        button: qubes_gui::Button,
-    ) -> std::io::Result<()>;
-
+        /// The contents of the event
+        event: qubes_gui::Button,
+    },
     /// The GUI daemon has requested the contents of the clipboard.  The agent
     /// is expected to send a [`qubes_gui::MSG_CLIPBOARD_DATA`] message with the
     /// requested data.
-    fn copy(&mut self, agent: &mut super::Client) -> std::io::Result<()>;
-
+    Copy,
     /// Set the contents of the clipboard.
-    fn paste(&mut self, agent: &mut super::Client, paste_buffer: String) -> std::io::Result<()>;
-
+    Paste {
+        /// The pasted data, which is not trusted
+        untrusted_data: &'a str,
+    },
     /// The keymap has changed.
-    fn keymap(
-        &mut self,
-        agent: &mut super::Client,
-        keymap: qubes_gui::KeymapNotify,
-    ) -> std::io::Result<()>;
-
+    Keymap {
+        /// The new keymap
+        new_keymap: qubes_gui::KeymapNotify,
+    },
     /// The agent must redraw a portion of the display
-    fn redraw(
-        &mut self,
-        agent: &mut super::Client,
+    Redraw {
+        /// The window that needs to be redrawn
         window: u32,
+        /// The portion of the window to redraw
         portion_to_redraw: qubes_gui::MapInfo,
-    ) -> std::io::Result<()>;
-
+    },
     /// A window has been moved and/or resized.
-    fn configure(
-        &mut self,
-        agent: &mut super::Client,
+    Configure {
+        /// The window the event was sent to
         window: u32,
-        new_size_and_positon: qubes_gui::Configure,
-    ) -> std::io::Result<()>;
-
+        /// The contents of the event
+        new_size_and_position: qubes_gui::Configure,
+    },
     /// A window has gained or lost focus
-    fn focus(
-        &mut self,
-        agent: &mut super::Client,
+    Focus {
+        /// The window the event was sent to
         window: u32,
+        /// The contents of the event
         event: qubes_gui::Focus,
-    ) -> std::io::Result<()>;
-
+    },
     /// Window manager flags have changed
-    fn window_flags(
-        &mut self,
-        agent: &mut super::Client,
+    WindowFlags {
+        /// The window the event was sent to
         window: u32,
+        /// The contents of the event
         flags: qubes_gui::WindowFlags,
-    ) -> std::io::Result<()>;
+    },
 }
 
 impl super::Client {
@@ -100,75 +95,77 @@ impl super::Client {
     /// # Panics
     ///
     /// Panics if called on a daemon instance.
-    pub fn dispatch_events(&mut self, implementation: &mut dyn AgentTrait) -> std::io::Result<()> {
-        self.wait();
+    pub fn next_event(&mut self) -> std::io::Result<Option<DaemonToAgentEvent>> {
+        assert!(self.agent, "Called next_event on a daemon instance!");
+        let (header, body) = match self.vchan.read_header() {
+            Ok(None) => return Ok(None),
+            Err(e) => return Err(e),
+            Ok(Some(s)) => s,
+        };
+        let window = header.window;
         loop {
-            let (header, body) = match self.vchan.read_header() {
-                Ok(None) => break Ok(()),
-                Err(e) => break Err(e),
-                Ok(Some(s)) => s,
-            };
-            match header.ty {
+            break Ok(Some(match header.ty {
                 qubes_gui::MSG_MOTION => {
-                    let mut m = qubes_gui::Motion::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    implementation.motion(self, header.window, m)?
+                    let mut event = qubes_gui::Motion::default();
+                    event.as_mut_bytes().copy_from_slice(body);
+                    DaemonToAgentEvent::Motion { window, event }
                 }
                 qubes_gui::MSG_CROSSING => {
-                    let mut m = qubes_gui::Crossing::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    implementation.crossing(self, header.window, m)?
+                    let mut event = qubes_gui::Crossing::default();
+                    event.as_mut_bytes().copy_from_slice(body);
+                    DaemonToAgentEvent::Crossing { window, event }
                 }
-                qubes_gui::MSG_CLOSE => {
-                    assert!(body.is_empty());
-                    implementation.close(self, header.window)?
-                }
+                qubes_gui::MSG_CLOSE => DaemonToAgentEvent::Close { window },
                 qubes_gui::MSG_KEYPRESS => {
-                    let mut m = qubes_gui::Keypress::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    implementation.keypress(self, header.window, m)?
+                    let mut event = qubes_gui::Keypress::default();
+                    event.as_mut_bytes().copy_from_slice(body);
+                    DaemonToAgentEvent::Keypress { window, event }
                 }
                 qubes_gui::MSG_BUTTON => {
-                    let mut m = qubes_gui::Button::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    implementation.button(self, header.window, m)?
+                    let mut event = qubes_gui::Button::default();
+                    event.as_mut_bytes().copy_from_slice(body);
+                    DaemonToAgentEvent::Button { window, event }
                 }
-                qubes_gui::MSG_CLIPBOARD_REQ => implementation.copy(self)?,
+                qubes_gui::MSG_CLIPBOARD_REQ => DaemonToAgentEvent::Copy,
                 qubes_gui::MSG_CLIPBOARD_DATA => {
-                    let paste_data = std::str::from_utf8(body)
-                        .map_err(|e| {
-                            std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-                        })?
-                        .to_owned();
-                    implementation.paste(self, paste_data)?
+                    let untrusted_data = std::str::from_utf8(body).map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+                    })?;
+                    DaemonToAgentEvent::Paste { untrusted_data }
                 }
                 qubes_gui::MSG_KEYMAP_NOTIFY => {
-                    let mut m = qubes_gui::KeymapNotify::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    implementation.keymap(self, m)?
+                    let mut new_keymap = qubes_gui::KeymapNotify::default();
+                    new_keymap.as_mut_bytes().copy_from_slice(body);
+                    DaemonToAgentEvent::Keymap { new_keymap }
                 }
                 qubes_gui::MSG_MAP => {
-                    let mut m = qubes_gui::MapInfo::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    implementation.redraw(self, header.window, m)?
+                    let mut portion_to_redraw = qubes_gui::MapInfo::default();
+                    portion_to_redraw.as_mut_bytes().copy_from_slice(body);
+                    DaemonToAgentEvent::Redraw {
+                        window,
+                        portion_to_redraw,
+                    }
                 }
                 qubes_gui::MSG_CONFIGURE => {
-                    let mut m = qubes_gui::Configure::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    implementation.configure(self, header.window, m)?
+                    let mut new_size_and_position = qubes_gui::Configure::default();
+                    new_size_and_position.as_mut_bytes().copy_from_slice(body);
+                    DaemonToAgentEvent::Configure {
+                        window,
+                        new_size_and_position,
+                    }
                 }
                 qubes_gui::MSG_FOCUS => {
-                    let mut m = qubes_gui::Focus::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    implementation.focus(self, header.window, m)?
+                    let mut event = qubes_gui::Focus::default();
+                    event.as_mut_bytes().copy_from_slice(body);
+                    DaemonToAgentEvent::Focus { window, event }
                 }
                 qubes_gui::MSG_WINDOW_FLAGS => {
-                    let mut m = qubes_gui::WindowFlags::default();
-                    m.as_mut_bytes().copy_from_slice(body);
-                    implementation.window_flags(self, header.window, m)?
+                    let mut flags = qubes_gui::WindowFlags::default();
+                    flags.as_mut_bytes().copy_from_slice(body);
+                    DaemonToAgentEvent::WindowFlags { window, flags }
                 }
-                _ => {}
-            }
+                _ => continue,
+            }));
         }
     }
 }
