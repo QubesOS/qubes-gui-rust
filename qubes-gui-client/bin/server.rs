@@ -1,4 +1,4 @@
-use qubes_gui_client::agent::DaemonToAgentEvent as Event;
+use qubes_gui::DaemonToAgentEvent as Event;
 use std::convert::TryInto;
 use std::os::unix::io::AsRawFd as _;
 
