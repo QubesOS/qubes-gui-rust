@@ -1,10 +1,16 @@
-//! Qubes GUI protocol library.  This provides only the protocol definition; it
-//! does no I/O.
+//! # Rust bindings to, and specification of, the Qubes OS GUI Protocol (QOGP).
 //!
-//! # Transport and message format
+//! ## Transport and Terminology
 //!
 //! The Qubes OS GUI protocol is spoken over a vchan between two virtual
-//! machines.  Each message is a C struct that is cast to a byte slice and sent
+//! machines (VMs).  The VM providing GUI services is the client of this vchan,
+//! while the VM that wishes to display its GUI is the server.  The component
+//! that provides GUI services to other VMs is known as the *GUI daemon*, and
+//! the component that the GUI daemon connects to is known as the *GUI agent*.
+//!
+//! ## Message format
+//!
+//! Each message is a C struct that is cast to a byte slice and sent
 //! directly over the vchan, without any marshalling or unmarshalling steps.
 //! This is safe because no GUI message has any padding bytes.  Similarly, the
 //! receiver casts a C struct to a mutable byte slice and reads the bytes
@@ -35,7 +41,28 @@
 //! which uses proper asynchronous I/O libraries, SHOULD NOT have this
 //! limitation.
 //!
-//! # Shared memory
+//! ## Window IDs
+//!
+//! The Qubes OS GUI protocol refers to each surface by a 32-bit unsigned window
+//! ID.  Zero is reserved and means “no window”.  For instance, using zero for a
+//! window’s parent means that the window does not have a parent.  Otherwise,
+//! agents are free to choose any window ID they wish.  In particular, while X11
+//! limits IDs to a maximum of 2²⁹ - 1, the Qubes OS GUI protocol imposes no
+//! such restriction.
+//!
+//! It is a protocol error for an agent to send a message to a window that does
+//! not exist, including a window which it has deleted.  Because of unavoidable
+//! race conditions, agents may recieve events for windows they have already
+//! destroyed.  Such messages MUST be ignored.
+//!
+//! ## Unrecognized messages
+//!
+//! GUI daemons MUST treat messages with an unknown type as a protocol error.
+//! GUI agents MAY log the headers of such messages and MUST otherwise ignore
+//! them.  The bodies of such messages MUST NOT be logged as they may contain
+//! sensitive data.
+//!
+//! ## Shared memory
 //!
 //! The Qubes GUI protocol uses inter-qube shared memory for all images.  This
 //! shared memory is not sanitized in any way whatsoever, and may be modified
@@ -44,14 +71,14 @@
 //! were it not that no such access is required at all!  This avoids requiring
 //! any form of signal handling, which is both `unsafe` and ugly.
 //!
-//! # Differences from the reference implementation
+//! ## Differences from the reference implementation
 //!
 //! The reference implementation of the GUI protocol considers the GUI daemon
 //! (the server) to be trusted, while the GUI agent is not trusted.  As such,
 //! the GUI agent blindly trusts the GUI daemon, while the GUI daemon must
 //! carefully validate all data from the GUI agent.
 //!
-//! The Rust implementation takes a different view: *Both* the client and server
+//! This Rust implementation takes a different view: *Both* the client and server
 //! consider the other to be untrusted, and all messages are strictly validated.
 //! This is necessary to meet Rust safety requirements, and also makes bugs in
 //! the server easier to detect.
@@ -194,6 +221,39 @@ enum_const! {
     }
 }
 
+enum_const! {
+    #[repr(u32)]
+    /// State of a button
+    pub enum ButtonEvent {
+        /// A button has been pressed
+        (EV_BUTTON_PRESS, Press) = 4,
+        /// A button has been released
+        (EV_BUTTON_RELEASE, Release) = 5,
+    }
+}
+
+enum_const! {
+    #[repr(u32)]
+    /// Key change event
+    pub enum KeyEvent {
+        /// The key was pressed
+        (EV_KEY_PRESS, Press) = 2,
+        /// The key was released
+        (EV_KEY_RELEASE, Release) = 3,
+    }
+}
+
+enum_const! {
+    #[repr(u32)]
+    /// Focus change event
+    pub enum FocusEvent {
+        /// The window now has focus
+        (EV_FOCUS_IN, In) = 9,
+        /// The window has lost focus
+        (EV_FOCUS_OUT, Out) = 10,
+    }
+}
+
 /// Flags for [`WindowHints`].  These are a bitmask.
 pub enum WindowHintsFlags {
     /// User-specified position
@@ -293,11 +353,16 @@ qubes_castable::castable! {
     }
 
     /// Agent ⇒ daemon: Create a window.  This should always be followed by a
-    /// [`Configure`] message.
+    /// [`Configure`] message.  The window is not immediately mapped.
     pub struct Create {
-        /// Rectangle the window is to occupy
+        /// Rectangle the window is to occupy.  It is a protocol error for the
+        /// width or height to be zero, for the width to exceed
+        /// [`MAX_WINDOW_WIDTH`], or for the height to exceed [`MAX_WINDOW_HEIGHT`].
         rectangle: Rectangle,
-        /// Parent window.  This must exist.
+        /// Parent window, or [`None`] if there is no parent window.  It is a
+        /// protocol error to specify a parent window that does not exist.  The
+        /// parent window (or lack theirof) cannot be changed after a window has
+        /// been created.
         parent: Option<NonZeroU32>,
         /// If this is 1, then this window (usually a menu) should not be
         /// managed by the window manager.  If this is 0, the window should be
@@ -307,7 +372,8 @@ qubes_castable::castable! {
 
     /// Daemon ⇒ agent: Keypress
     pub struct Keypress {
-        /// The X11 type of key pressed
+        /// The X11 type of key pressed.  MUST be 2 ([`EV_KEY_PRESS`]) or 3
+        /// ([`EV_KEY_RELEASE`]).  Anything else is a protocol violation.
         ty: u32,
         /// Coordinates of the key press
         coordinates: Coordinates,
@@ -319,11 +385,12 @@ qubes_castable::castable! {
 
     /// Daemon ⇒ agent: Button press
     pub struct Button {
-        /// X11 event type
+        /// The type of event.  MUST be 4 ([`EV_BUTTON_PRESS`]) or 5
+        /// ([`EV_BUTTON_RELEASE`]).  Anything else is a protocol violation.
         ty: u32,
         /// Coordinates of the button press
         coordinates: Coordinates,
-        /// X11 event state
+        /// Bitmask of modifier keys
         state: u32,
         /// X11 button number
         button: u32,
@@ -333,7 +400,7 @@ qubes_castable::castable! {
     pub struct Motion {
         /// Coordinates of the motion event
         coordinates: Coordinates,
-        /// X11 event state
+        /// Bitmask of buttons that are pressed
         state: u32,
         /// X11 is_hint flag
         is_hint: u32,
@@ -373,11 +440,14 @@ qubes_castable::castable! {
 
     /// Daemon ⇒ agent: Focus event from GUI qube
     pub struct Focus {
-        /// The X11 event type
+        /// The type of event.  MUST be 9 ([`EV_FOCUS_IN`]) or 10
+        /// ([`EV_FOCUS_OUT`]).  Anything else is a protocol error.
         ty: u32,
-        /// The X11 event mode; MUST be 0.
+        /// The X11 event mode.  This is not used in the Qubes GUI protocol.
+        /// Daemons MUST set this to 0 to avoid information leaks.  Agents MAY
+        /// consider nonzero values to be a protocol error.
         mode: u32,
-        /// The X11 event detail
+        /// The X11 event detail.  MUST be between 0 and 7 inclusive.
         detail: u32,
     }
 
@@ -387,13 +457,16 @@ qubes_castable::castable! {
         data: [u8; 128],
     }
 
-    /// Agent ⇒ daemon: Unmap the window
+    /// Agent ⇒ daemon: Unmap the window.  Unmapping a window that is not
+    /// currently mapped has no effect.
     pub struct Unmap {}
 
-    /// Agent ⇒ daemon: Dock the window
+    /// Agent ⇒ daemon: Dock the window.  Docking an already-docked window has
+    /// no effect.
     pub struct Dock {}
 
-    /// Agent ⇒ daemon: Destroy the window
+    /// Agent ⇒ daemon: Destroy the window.  The agent SHOULD NOT reuse the
+    /// window ID for as long as possible to make races less likely.
     pub struct Destroy {}
 
     /// Daemon ⇒ agent: Keymap change notification
