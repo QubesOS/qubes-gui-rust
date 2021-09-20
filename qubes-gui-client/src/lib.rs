@@ -49,10 +49,22 @@ impl Client {
         message: &T,
         window: NonZeroU32,
     ) -> io::Result<()> {
+        self.send_raw(message.as_bytes(), window, T::kind())
+    }
+
+    /// Raw version of [`Client::send`].  Using [`Client::send`] is preferred
+    /// where possible, as it automatically selects the correct message type.
+    pub fn send_raw(&mut self, message: &[u8], window: NonZeroU32, ty: u32) -> io::Result<()> {
+        let untrusted_len = message.len() as u32;
+        assert_eq!(
+            untrusted_len as usize,
+            message.len(),
+            "Message length must fit in a u32"
+        );
         let header = qubes_gui::Header {
-            ty: T::kind(),
+            ty,
             window: window.into(),
-            untrusted_len: std::mem::size_of_val(message) as u32,
+            untrusted_len,
         };
         if self.agent {
             if header.ty == qubes_gui::MSG_CREATE {
@@ -71,7 +83,7 @@ impl Client {
         }
         // FIXME this is slow
         self.vchan.write(header.as_bytes())?;
-        self.vchan.write(message.as_bytes())?;
+        self.vchan.write(message)?;
         Ok(())
     }
 

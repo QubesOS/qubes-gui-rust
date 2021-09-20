@@ -4,14 +4,13 @@ use std::os::unix::io::AsRawFd as _;
 
 fn main() -> std::io::Result<()> {
     let (width, height) = (0x200, 0x100);
-    // let buffer: Vec<u32> = vec![0; (width * height).try_into().unwrap()];
-    let mut vchan = qubes_gui_client::agent::new(0).unwrap();
+    let mut connection = qubes_gui_gntalloc::new(0).unwrap();
+    let (mut vchan, conf) = qubes_gui_client::Client::agent(0).unwrap();
     // we now have a vchan 🙂
     println!("🙂 Somebody connected to us, yay!");
-    println!("Configuration parameters: {:?}", vchan.conf());
+    println!("Configuration parameters: {:?}", conf);
     println!("Creating window");
     vchan
-        .client()
         .send(
             &qubes_gui::Create {
                 rectangle: qubes_gui::Rectangle {
@@ -24,15 +23,20 @@ fn main() -> std::io::Result<()> {
             50.try_into().unwrap(),
         )
         .unwrap();
-    let mut buf = vchan.alloc_buffer(width, height).unwrap();
+    let mut buf = connection.alloc_buffer(width, height).unwrap();
     let mut shade = vec![0xFF00u32; (width * height / 2).try_into().unwrap()];
-    buf.dump(vchan.client(), 50).unwrap();
     buf.write(
         qubes_castable::as_bytes(&shade[..]),
         (width * height).try_into().unwrap(),
     );
     vchan
-        .client()
+        .send_raw(
+            buf.msg(),
+            50.try_into().unwrap(),
+            qubes_gui::MSG_WINDOW_DUMP,
+        )
+        .unwrap();
+    vchan
         .send(
             &qubes_gui::MapInfo {
                 override_redirect: 0,
@@ -42,8 +46,8 @@ fn main() -> std::io::Result<()> {
         )
         .unwrap();
     loop {
-        vchan.client().wait();
-        while let Some(ev) = vchan.client().next_event()? {
+        vchan.wait();
+        while let Some(ev) = vchan.next_event()? {
             match ev {
                 Event::Motion { window: _, event } => println!("Motion event: {:?}", event),
                 Event::Crossing { window: _, event } => println!("Crossing event: {:?}", event),
@@ -71,20 +75,24 @@ fn main() -> std::io::Result<()> {
                     let qubes_gui::WindowSize { width, height } = rectangle.size;
                     drop(std::mem::replace(
                         &mut buf,
-                        vchan.alloc_buffer(width, height).unwrap(),
+                        connection.alloc_buffer(width, height).unwrap(),
                     ));
                     shade.resize((width * height / 2).try_into().unwrap(), 0xFF00u32);
                     buf.write(
                         qubes_castable::as_bytes(&shade[..]),
                         (width * height / 4 * 4).try_into().unwrap(),
                     );
-                    buf.dump(vchan.client(), window).unwrap();
-                    let w = window.try_into().unwrap();
-                    vchan.client().send(&new_size_and_position, w).unwrap();
                     vchan
-                        .client()
-                        .send(&qubes_gui::ShmImage { rectangle }, w)
-                        .unwrap()
+                        .send_raw(
+                            buf.msg(),
+                            50.try_into().unwrap(),
+                            qubes_gui::MSG_WINDOW_DUMP,
+                        )
+                        .unwrap();
+
+                    let w = window.try_into().unwrap();
+                    vchan.send(&new_size_and_position, w).unwrap();
+                    vchan.send(&qubes_gui::ShmImage { rectangle }, w).unwrap()
                 }
                 Event::Focus { window: _, event } => println!("Focus event: {:?}", event),
                 Event::WindowFlags { window: _, flags } => {
@@ -94,7 +102,7 @@ fn main() -> std::io::Result<()> {
             }
         }
         let mut s = [libc::pollfd {
-            fd: vchan.client().as_raw_fd(),
+            fd: vchan.as_raw_fd(),
             events: libc::POLLIN | libc::POLLOUT | libc::POLLHUP | libc::POLLPRI,
             revents: 0,
         }];

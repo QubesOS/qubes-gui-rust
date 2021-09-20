@@ -4,8 +4,9 @@ members = [
   "qubes-gui-server",
   "qubes-gui",
   "qubes-castable",
+  "qubes-gui-gntalloc",
+  "qubes-demo-agent",
   "vchan",
   "vchan-sys",
-  #"qubes-xen",
   "vendor/libc",
 ]

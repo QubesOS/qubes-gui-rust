@@ -11,6 +11,18 @@ name = "qubes-castable"
 version = "0.1.0"
 
 [[package]]
+name = "qubes-demo-agent"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "qubes-castable",
+ "qubes-gui",
+ "qubes-gui-client",
+ "qubes-gui-gntalloc",
+ "vchan",
+]
+
+[[package]]
 name = "qubes-gui"
 version = "0.1.0"
 dependencies = [
@@ -21,10 +33,17 @@ dependencies = [
 name = "qubes-gui-client"
 version = "0.1.0"
 dependencies = [
- "libc",
  "qubes-castable",
  "qubes-gui",
  "vchan",
+]
+
+[[package]]
+name = "qubes-gui-gntalloc"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "qubes-gui",
 ]
 
 [[package]]

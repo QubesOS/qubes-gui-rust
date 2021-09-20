@@ -8,9 +8,7 @@ type DomID = u16;
 
 /// A GUI agent instance
 pub struct Agent {
-    inner: crate::Client,
     alloc: Rc<std::fs::File>,
-    conf: qubes_gui::XConf,
     peer: DomID,
 }
 
@@ -134,24 +132,14 @@ impl Buffer {
         }
     }
 
-    /// Sends the contents of the window to the GUI agent
-    pub fn dump(&self, client: &mut crate::Client, window: u32) -> io::Result<()> {
+    /// Returns the message (to send to the GUI daemon) as a byte slice
+    pub fn msg(&self) -> &[u8] {
         let total_length = self.dimensions.grefs() * 4
             + (std::mem::size_of::<qubes_gui::WindowDumpHeader>() as u32);
-        let header = qubes_gui::Header {
-            ty: qubes_gui::MSG_WINDOW_DUMP,
-            window,
-            untrusted_len: total_length,
-        };
         assert!(self.inner.capacity() * std::mem::size_of::<u64>() >= total_length as _);
-        let msg = unsafe {
+        unsafe {
             std::slice::from_raw_parts(self.inner.as_ptr() as *const u8, cast_u32(total_length))
-        };
-        client
-            .vchan
-            .write(qubes_castable::Castable::as_bytes(&header))?;
-        client.vchan.write(msg)?;
-        Ok(())
+        }
     }
 }
 
@@ -267,16 +255,6 @@ impl Agent {
             }
         }
     }
-
-    /// Obtains a reference to the client
-    pub fn client(&mut self) -> &mut crate::Client {
-        &mut self.inner
-    }
-
-    /// Obtains the configuration provided by the GUI daemon
-    pub fn conf(&self) -> qubes_gui::XConf {
-        self.conf
-    }
 }
 
 /// Creates a GUI agent
@@ -287,20 +265,8 @@ pub fn new(peer: DomID) -> io::Result<Agent> {
             .write(true)
             .open("/dev/xen/gntalloc")?,
     );
-    let (inner, conf) = crate::Client::agent(peer)?;
-    Ok(Agent {
-        alloc,
-        inner,
-        conf,
-        peer,
-    })
+    Ok(Agent { alloc, peer })
 }
 
 const IOCTL_GNTALLOC_ALLOC_GREF: std::os::raw::c_ulong = 0x184705;
 const IOCTL_GNTALLOC_DEALLOC_GREF: std::os::raw::c_ulong = 0x104706;
-
-impl std::os::unix::io::AsRawFd for Agent {
-    fn as_raw_fd(&self) -> std::os::raw::c_int {
-        self.inner.as_raw_fd()
-    }
-}

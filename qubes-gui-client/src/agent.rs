@@ -6,9 +6,6 @@
 
 use qubes_castable::Castable as _;
 use qubes_gui::DaemonToAgentEvent;
-mod io;
-// FIXME move this into separate modules
-pub use io::*;
 
 impl super::Client {
     /// Dispatch events received by this [`super::Client`]

@@ -1,0 +1,9 @@
+[package]
+name = "qubes-gui-gntalloc"
+version = "0.1.0"
+edition = "2018"
+license = "GPLv2+"
+
+[dependencies]
+libc = { path = "../vendor/libc", version = "*" }
+qubes-gui = { path = "../qubes-gui", version = "0.1.0" }
