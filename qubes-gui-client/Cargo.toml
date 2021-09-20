@@ -3,6 +3,7 @@ name = "qubes-gui-client"
 version = "0.1.0"
 edition = "2018"
 publish = false
+license = "GPLv2+"
 
 [dependencies]
 vchan = { path = "../vchan", version = "0.1.0" }

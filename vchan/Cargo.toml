@@ -2,6 +2,7 @@
 name = "vchan"
 version = "0.1.0"
 edition = "2018"
+license = "GPLv2"
 
 [dependencies]
 vchan-sys = { version = "0.1.0", path = "../vchan-sys" }
