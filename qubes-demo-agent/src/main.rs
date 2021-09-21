@@ -10,19 +10,16 @@ fn main() -> std::io::Result<()> {
     println!("🙂 Somebody connected to us, yay!");
     println!("Configuration parameters: {:?}", conf);
     println!("Creating window");
-    vchan
-        .send(
-            &qubes_gui::Create {
-                rectangle: qubes_gui::Rectangle {
-                    top_left: qubes_gui::Coordinates { x: 50, y: 400 },
-                    size: qubes_gui::WindowSize { width, height },
-                },
-                parent: None,
-                override_redirect: 0,
-            },
-            50.try_into().unwrap(),
-        )
-        .unwrap();
+    let window = 50.try_into().unwrap();
+    let create = qubes_gui::Create {
+        rectangle: qubes_gui::Rectangle {
+            top_left: qubes_gui::Coordinates { x: 50, y: 400 },
+            size: qubes_gui::WindowSize { width, height },
+        },
+        parent: None,
+        override_redirect: 0,
+    };
+    vchan.send(&create, window).unwrap();
     let mut buf = connection.alloc_buffer(width, height).unwrap();
     let mut shade = vec![0xFF00u32; (width * height / 2).try_into().unwrap()];
     buf.write(
@@ -30,11 +27,13 @@ fn main() -> std::io::Result<()> {
         (width * height).try_into().unwrap(),
     );
     vchan
-        .send_raw(
-            buf.msg(),
-            50.try_into().unwrap(),
-            qubes_gui::MSG_WINDOW_DUMP,
-        )
+        .send_raw(buf.msg(), window, qubes_gui::MSG_WINDOW_DUMP)
+        .unwrap();
+    let title = b"Qubes Demo Rust GUI Agent";
+    let mut title_buf = [0u8; 128];
+    title_buf[..title.len()].copy_from_slice(title);
+    vchan
+        .send_raw(&mut title_buf, window, qubes_gui::MSG_SET_TITLE)
         .unwrap();
     vchan
         .send(
@@ -42,7 +41,7 @@ fn main() -> std::io::Result<()> {
                 override_redirect: 0,
                 transient_for: 0,
             },
-            50.try_into().unwrap(),
+            window,
         )
         .unwrap();
     loop {
