@@ -64,10 +64,6 @@ name = "qubes-gui-server"
 version = "0.1.0"
 
 [[package]]
-name = "qubes-gui-util"
-version = "0.1.0"
-
-[[package]]
 name = "vchan"
 version = "0.1.0"
 dependencies = [
