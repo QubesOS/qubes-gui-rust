@@ -1,5 +1,0 @@
-[package]
-name = "qubes-gui-server"
-version = "0.1.0"
-edition = "2018"
-description = "Qubes GUI protocol server implementation"
