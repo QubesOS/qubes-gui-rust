@@ -24,7 +24,7 @@
 use qubes_castable::Castable as _;
 use qubes_gui::Header;
 use std::collections::VecDeque;
-use std::io::{self, Error, ErrorKind, Write};
+use std::io::{self, Error, ErrorKind, Read, Write};
 use std::mem::size_of;
 use std::ops::Range;
 
@@ -36,9 +36,32 @@ enum ReadState {
     Error,
 }
 
+// Trait for a vchan, for unit-testing
+pub(crate) trait VchanMock: Read + Write {
+    fn buffer_space(&self) -> usize;
+    fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize>;
+    fn wait(&self);
+    fn data_ready(&self) -> usize;
+}
+
+impl VchanMock for vchan::Vchan {
+    fn buffer_space(&self) -> usize {
+        vchan::Vchan::buffer_space(self)
+    }
+    fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        vchan::Vchan::recv(self, buf)
+    }
+    fn wait(&self) {
+        vchan::Vchan::wait(self)
+    }
+    fn data_ready(&self) -> usize {
+        vchan::Vchan::data_ready(self)
+    }
+}
+
 #[derive(Debug)]
-pub(crate) struct Vchan {
-    vchan: vchan::Vchan,
+pub(crate) struct Vchan<T: VchanMock> {
+    vchan: T,
     queue: VecDeque<Vec<u8>>,
     offset: usize,
     state: ReadState,
@@ -57,8 +80,8 @@ fn u32_to_usize(i: u32) -> usize {
     i as usize
 }
 
-impl Vchan {
-    fn write_slice(vchan: &mut vchan::Vchan, slice: &[u8]) -> io::Result<usize> {
+impl<T: VchanMock> Vchan<T> {
+    fn write_slice(vchan: &mut T, slice: &[u8]) -> io::Result<usize> {
         let space = vchan.buffer_space();
         if space == 0 {
             Ok(0)
@@ -200,7 +223,9 @@ impl Vchan {
             }
         }
     }
+}
 
+impl Vchan<vchan::Vchan> {
     pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
         let vchan = vchan::Vchan::server(domain, qubes_gui::LISTENING_PORT.into(), 4096, 4096)?;
         loop {

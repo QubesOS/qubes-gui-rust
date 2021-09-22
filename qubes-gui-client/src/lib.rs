@@ -21,6 +21,7 @@
 //! A client for the Qubes OS GUI protocol.  This client is low-level.
 
 #![forbid(missing_docs)]
+#![forbid(unconditional_recursion)]
 
 use qubes_castable::Castable as _;
 pub use qubes_gui;
@@ -34,7 +35,7 @@ mod buffer;
 /// The entry-point to the library.
 #[derive(Debug)]
 pub struct Client {
-    vchan: buffer::Vchan,
+    vchan: buffer::Vchan<vchan::Vchan>,
     set: BTreeSet<NonZeroU32>,
     agent: bool,
 }
