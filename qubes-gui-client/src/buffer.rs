@@ -24,7 +24,6 @@
 use qubes_castable::Castable as _;
 use qubes_gui::Header;
 use std::collections::VecDeque;
-use std::convert::TryInto;
 use std::io::{self, Error, ErrorKind, Write};
 use std::mem::size_of;
 use std::ops::Range;
@@ -47,14 +46,15 @@ pub(crate) struct Vchan {
     buffer: Vec<u8>,
 }
 
+#[inline(always)]
 fn u32_to_usize(i: u32) -> usize {
+    // If u32 doesn’t actually fit in a usize, fail the build
     let [] = [0; if u32::MAX as usize as u32 == u32::MAX {
         0
     } else {
         1
     }];
-    i.try_into()
-        .expect("u32 always fits in a usize, or the above statement would not compile; qed")
+    i as usize
 }
 
 impl Vchan {
