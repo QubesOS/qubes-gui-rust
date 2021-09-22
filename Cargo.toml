@@ -6,6 +6,7 @@ members = [
   "qubes-castable",
   "qubes-gui-gntalloc",
   "qubes-demo-agent",
+  "qubes-gui-agent",
   "qubes-gui-util",
   "qubes-gui-agent-proto",
   "vchan",
