@@ -29,8 +29,6 @@ use std::io;
 use std::num::NonZeroU32;
 use std::task::Poll;
 
-pub mod agent;
-
 mod buffer;
 
 /// The entry-point to the library.
