@@ -43,6 +43,17 @@ pub struct Vchan {
     inner: *mut vchan_sys::libvchan_t,
 }
 
+fn c_int_to_usize(i: c_int) -> usize {
+    assert!(i >= 0, "c_int_to_usize passed negative number");
+    // If u32 doesn’t actually fit in a usize, fail the build
+    let [] = [0; if c_int::MAX as usize as c_int == c_int::MAX {
+        0
+    } else {
+        1
+    }];
+    i as usize
+}
+
 impl Vchan {
     /// Creates a listening vchan that listens from requests from the given domain
     /// on the given port.
@@ -112,8 +123,8 @@ impl Vchan {
     /// blocking.
     pub fn data_ready(&self) -> usize {
         let s = unsafe { vchan_sys::libvchan_data_ready(self.inner) };
-        assert!(s >= 0, "Number of bytes ready cannot be negative!");
-        s as _
+        assert!(s >= 0, "Number of bytes ready to read cannot be negative!");
+        c_int_to_usize(s)
     }
 
     /// Returns the amount of data that can be written without blocking.
@@ -123,7 +134,7 @@ impl Vchan {
             s >= 0,
             "Number of bytes that can be sent cannot be negative!"
         );
-        s as _
+        c_int_to_usize(s)
     }
 
     /// Wait for I/O in some direction to be possible.  This function is
@@ -133,6 +144,19 @@ impl Vchan {
         unsafe { vchan_sys::libvchan_wait(self.inner) };
     }
 
+    /// Write the entire buffer
+    pub fn send(&mut self, buffer: &[u8]) -> Result<usize, Error> {
+        let res =
+            unsafe { vchan_sys::libvchan_send(self.inner, buffer.as_ptr() as _, buffer.len()) };
+        if res == -1 {
+            Err(Error::last_os_error())
+        } else {
+            assert!(res >= 0, "sent negative number of bytes?");
+            assert_eq!(res as usize, buffer.len(), "libvchan_send short write?");
+            Ok(res as _)
+        }
+    }
+
     /// Block until the given buffer is full
     pub fn recv(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
         let res =
@@ -140,6 +164,8 @@ impl Vchan {
         if res == -1 {
             Err(Error::last_os_error())
         } else {
+            assert!(res >= 0, "received negative number of bytes?");
+            assert_eq!(res as usize, buffer.len(), "libvchan_recv short read?");
             Ok(res as _)
         }
     }
@@ -152,6 +178,7 @@ impl Write for Vchan {
         if res == -1 {
             Err(Error::last_os_error())
         } else {
+            assert!(res >= 0, "wrote negative number of bytes?");
             Ok(res as _)
         }
     }
@@ -168,6 +195,7 @@ impl Read for Vchan {
         if res == -1 {
             Err(Error::last_os_error())
         } else {
+            assert!(res >= 0, "read negative number of bytes?");
             Ok(res as _)
         }
     }

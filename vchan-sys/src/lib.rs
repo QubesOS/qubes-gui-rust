@@ -44,6 +44,7 @@ extern "C" {
     ) -> *mut libvchan_t;
     pub fn libvchan_client_init(domain: c_int, port: c_int) -> *mut libvchan_t;
     pub fn libvchan_write(ctrl: *mut libvchan_t, data: *const c_void, size: usize) -> c_int;
+    pub fn libvchan_send(ctrl: *mut libvchan_t, data: *const c_void, size: usize) -> c_int;
     pub fn libvchan_read(ctrl: *mut libvchan_t, data: *mut c_void, size: usize) -> c_int;
     pub fn libvchan_recv(ctrl: *mut libvchan_t, data: *mut c_void, size: usize) -> c_int;
     pub fn libvchan_wait(ctrl: *mut libvchan_t) -> c_int;
