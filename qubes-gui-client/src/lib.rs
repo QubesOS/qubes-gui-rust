@@ -67,16 +67,22 @@ impl Client {
         };
         if self.agent {
             if header.ty == qubes_gui::MSG_CREATE {
-                assert!(self.set.insert(window), "Creating a window already in map!");
+                assert!(
+                    self.set.insert(window),
+                    "Creating window {} already in map!",
+                    window
+                );
             } else if header.ty == qubes_gui::MSG_DESTROY {
                 assert!(
                     self.set.remove(&window),
-                    "Trying to delete window not in map!"
+                    "Trying to delete window {} not in map!",
+                    window
                 );
             } else {
                 assert!(
                     self.set.contains(&window),
-                    "Sending message on nonexistant window!"
+                    "Sending message on nonexistant window {}!",
+                    window
                 )
             }
         }
