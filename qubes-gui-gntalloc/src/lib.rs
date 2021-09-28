@@ -61,7 +61,7 @@ mod dimensions {
         pub fn buffer_size(&self) -> usize {
             assert!(self.width <= qubes_gui::MAX_WINDOW_WIDTH, "checked earlier");
             assert!(
-                self.width <= qubes_gui::MAX_WINDOW_HEIGHT,
+                self.height <= qubes_gui::MAX_WINDOW_HEIGHT,
                 "checked earlier"
             );
             (self.width * self.height * 4) as usize
