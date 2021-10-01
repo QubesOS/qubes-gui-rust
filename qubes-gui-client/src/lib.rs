@@ -122,14 +122,12 @@ impl Client {
     /// Creates a agent instance
     pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
         let (vchan, conf) = buffer::Vchan::agent(domain)?;
-        Ok((
-            Self {
-                vchan,
-                set: Default::default(),
-                agent: true,
-            },
-            conf,
-        ))
+        let s = Self {
+            vchan,
+            set: Default::default(),
+            agent: true,
+        };
+        Ok((s, conf))
     }
 }
 
