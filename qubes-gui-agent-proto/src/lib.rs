@@ -55,34 +55,23 @@ pub enum Error {
 pub enum DaemonToAgentEvent<'a> {
     /// The pointer has moved
     Motion {
-        /// The window the event is sent to
-        window: u32,
         /// The contents of the event
         event: qubes_gui::Motion,
     },
     /// The pointer has entered or left a window.
     Crossing {
-        /// The window the event is sent to
-        window: u32,
         /// The contents of the event
         event: qubes_gui::Crossing,
     },
     /// The user wishes to close a window
-    Close {
-        /// The window the event is sent to
-        window: u32,
-    },
+    Close,
     /// A key has been pressed or released
     Keypress {
-        /// The window the event is sent to
-        window: u32,
         /// The contents of the event
         event: qubes_gui::Keypress,
     },
     /// A button has been pressed or released
     Button {
-        /// The window the event is sent to
-        window: u32,
         /// The contents of the event
         event: qubes_gui::Button,
     },
@@ -102,32 +91,26 @@ pub enum DaemonToAgentEvent<'a> {
     },
     /// The agent must redraw a portion of the display
     Redraw {
-        /// The window that needs to be redrawn
-        window: u32,
         /// The portion of the window to redraw
         portion_to_redraw: qubes_gui::MapInfo,
     },
     /// A window has been moved and/or resized.
     Configure {
-        /// The window the event was sent to
-        window: u32,
         /// The contents of the event
         new_size_and_position: qubes_gui::Configure,
     },
     /// A window has gained or lost focus
     Focus {
-        /// The window the event was sent to
-        window: u32,
         /// The contents of the event
         event: qubes_gui::Focus,
     },
     /// Window manager flags have changed
     WindowFlags {
-        /// The window the event was sent to
-        window: u32,
         /// The contents of the event
         flags: qubes_gui::WindowFlags,
     },
+    /// GUI daemon confirms window destruciton; window ID may be reused
+    Destroy,
 }
 
 impl<'a> DaemonToAgentEvent<'a> {
@@ -143,34 +126,34 @@ impl<'a> DaemonToAgentEvent<'a> {
     /// # Errors
     ///
     /// Fails if the given GUI message cannot be parsed.
-    pub fn parse(header: qubes_gui::Header, body: &'a [u8]) -> Result<Option<Self>, Error> {
+    pub fn parse(header: qubes_gui::Header, body: &'a [u8]) -> Result<Option<(u32, Self)>, Error> {
         assert_eq!(
             header.untrusted_len.try_into(),
             Ok(body.len()),
             "Wrong body length provided!"
         );
         let window = header.window;
-        Ok(Some(match header.ty {
+        let res = match header.ty {
             qubes_gui::MSG_MOTION => {
                 let mut event = qubes_gui::Motion::default();
                 event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Motion { window, event }
+                DaemonToAgentEvent::Motion { event }
             }
             qubes_gui::MSG_CROSSING => {
                 let mut event = qubes_gui::Crossing::default();
                 event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Crossing { window, event }
+                DaemonToAgentEvent::Crossing { event }
             }
-            qubes_gui::MSG_CLOSE => DaemonToAgentEvent::Close { window },
+            qubes_gui::MSG_CLOSE => DaemonToAgentEvent::Close,
             qubes_gui::MSG_KEYPRESS => {
                 let mut event = qubes_gui::Keypress::default();
                 event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Keypress { window, event }
+                DaemonToAgentEvent::Keypress { event }
             }
             qubes_gui::MSG_BUTTON => {
                 let mut event = qubes_gui::Button::default();
                 event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Button { window, event }
+                DaemonToAgentEvent::Button { event }
             }
             qubes_gui::MSG_CLIPBOARD_REQ => DaemonToAgentEvent::Copy,
             qubes_gui::MSG_CLIPBOARD_DATA => {
@@ -185,30 +168,28 @@ impl<'a> DaemonToAgentEvent<'a> {
             qubes_gui::MSG_MAP => {
                 let mut portion_to_redraw = qubes_gui::MapInfo::default();
                 portion_to_redraw.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Redraw {
-                    window,
-                    portion_to_redraw,
-                }
+                DaemonToAgentEvent::Redraw { portion_to_redraw }
             }
             qubes_gui::MSG_CONFIGURE => {
                 let mut new_size_and_position = qubes_gui::Configure::default();
                 new_size_and_position.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::Configure {
-                    window,
                     new_size_and_position,
                 }
             }
             qubes_gui::MSG_FOCUS => {
                 let mut event = qubes_gui::Focus::default();
                 event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Focus { window, event }
+                DaemonToAgentEvent::Focus { event }
             }
             qubes_gui::MSG_WINDOW_FLAGS => {
                 let mut flags = qubes_gui::WindowFlags::default();
                 flags.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::WindowFlags { window, flags }
+                DaemonToAgentEvent::WindowFlags { flags }
             }
+            qubes_gui::MSG_DESTROY => DaemonToAgentEvent::Destroy,
             _ => return Ok(None),
-        }))
+        };
+        Ok(Some((window, res)))
     }
 }

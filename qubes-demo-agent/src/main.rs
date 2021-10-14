@@ -47,7 +47,7 @@ fn main() -> std::io::Result<()> {
         .unwrap();
     vchan.wait();
     loop {
-        match loop {
+        let (window, e) = loop {
             match vchan.read_header().map(Result::unwrap) {
                 Poll::Pending => vchan.wait(),
                 Poll::Ready((hdr, body)) => match Event::parse(hdr, body).unwrap() {
@@ -55,26 +55,23 @@ fn main() -> std::io::Result<()> {
                     Some(ev) => break ev,
                 },
             }
-        } {
-            Event::Motion { window: _, event } => println!("Motion event: {:?}", event),
-            Event::Crossing { window: _, event } => println!("Crossing event: {:?}", event),
-            Event::Close { window: _ } => {
+        };
+        match e {
+            Event::Motion { event } => println!("Motion event: {:?}", event),
+            Event::Crossing { event } => println!("Crossing event: {:?}", event),
+            Event::Close => {
                 println!("Got a close event, exiting!");
                 return Ok(());
             }
-            Event::Keypress { window: _, event } => println!("Key pressed: {:?}", event),
-            Event::Button { window: _, event } => println!("Button event: {:?}", event),
+            Event::Keypress { event } => println!("Key pressed: {:?}", event),
+            Event::Button { event } => println!("Button event: {:?}", event),
             Event::Copy => println!("clipboard data requested!"),
             Event::Paste { untrusted_data } => {
                 println!("clipboard paste, data {:?}", untrusted_data)
             }
             Event::Keymap { new_keymap } => println!("New keymap: {:?}", new_keymap),
-            Event::Redraw {
-                window: _,
-                portion_to_redraw,
-            } => println!("Map event: {:?}", portion_to_redraw),
+            Event::Redraw { portion_to_redraw } => println!("Map event: {:?}", portion_to_redraw),
             Event::Configure {
-                window,
                 new_size_and_position,
             } => {
                 println!("Configure event: {:?}", new_size_and_position);
@@ -101,8 +98,8 @@ fn main() -> std::io::Result<()> {
                 vchan.send(&new_size_and_position, w).unwrap();
                 vchan.send(&qubes_gui::ShmImage { rectangle }, w).unwrap()
             }
-            Event::Focus { window: _, event } => println!("Focus event: {:?}", event),
-            Event::WindowFlags { window: _, flags } => {
+            Event::Focus { event } => println!("Focus event: {:?}", event),
+            Event::WindowFlags { flags } => {
                 println!("Window manager flags have changed: {:?}", flags)
             }
             _ => println!("Got an unknown event!"),
