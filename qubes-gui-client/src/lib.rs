@@ -92,6 +92,14 @@ impl Client {
         Ok(())
     }
 
+    /// Even rawer version of [`Client::send`].  Using [`Client::send`] is
+    /// preferred where possible, as it automatically selects the correct
+    /// message type.  Otherwise, prefer [`Client::send_raw`], which at least
+    /// ensures correct framing.
+    pub fn send_raw_bytes(&mut self, msg: &[u8]) -> io::Result<()> {
+        self.vchan.write(msg)
+    }
+
     /// Acknowledge an event (as reported by poll(2), epoll(2), or similar).
     /// Must be called before performing any I/O.
     pub fn wait(&mut self) {
