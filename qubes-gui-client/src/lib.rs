@@ -137,6 +137,11 @@ impl Client {
         };
         Ok((s, conf))
     }
+
+    /// Gets and clears the “did_reconnect” flag
+    pub fn reconnected(&mut self) -> bool {
+        self.vchan.reconnected()
+    }
 }
 
 impl std::os::unix::io::AsRawFd for Client {

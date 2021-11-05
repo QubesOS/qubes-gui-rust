@@ -30,6 +30,7 @@ use std::ops::Range;
 
 #[derive(Debug)]
 enum ReadState {
+    Connecting,
     ReadingHeader,
     ReadingBody(Header, usize),
     Discard(usize),
@@ -37,12 +38,17 @@ enum ReadState {
 }
 
 // Trait for a vchan, for unit-testing
-pub(crate) trait VchanMock {
+pub(crate) trait VchanMock
+where
+    Self: Sized,
+{
     fn buffer_space(&self) -> usize;
     fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize>;
     fn send(&mut self, buf: &[u8]) -> io::Result<usize>;
     fn wait(&self);
     fn data_ready(&self) -> usize;
+    fn recreate(domid: u16) -> io::Result<Self>;
+    fn status(&self) -> vchan::Status;
 }
 
 impl VchanMock for vchan::Vchan {
@@ -61,6 +67,12 @@ impl VchanMock for vchan::Vchan {
     fn data_ready(&self) -> usize {
         vchan::Vchan::data_ready(self)
     }
+    fn recreate(domid: u16) -> io::Result<Self> {
+        vchan::Vchan::server(domid, qubes_gui::LISTENING_PORT.into(), 4096, 4096)
+    }
+    fn status(&self) -> vchan::Status {
+        self.status()
+    }
 }
 
 #[derive(Debug)]
@@ -71,6 +83,8 @@ pub(crate) struct Vchan<T: VchanMock> {
     state: ReadState,
     header: Header,
     buffer: Vec<u8>,
+    did_reconnect: bool,
+    domid: u16,
 }
 
 #[inline(always)]
@@ -144,19 +158,31 @@ impl<T: VchanMock> Vchan<T> {
         self.vchan.wait()
     }
 
+    /// Check for a reconnection, consuming the pending reconnection state.
+    pub fn reconnected(&mut self) -> bool {
+        std::mem::replace(&mut self.did_reconnect, false)
+    }
+
     /// If there is nothing to read, return `Ok(None)` immediately; otherwise,
     /// returns `Ok(Some(msg))` if a complete message has been read, or `Err`
     /// if something went wrong.
     pub fn read_header(&mut self) -> io::Result<Option<(Header, &[u8])>> {
         self.drain()?;
         let mut ready = self.vchan.data_ready();
-        loop {
-            if ready == 0 {
-                break Ok(None);
-            }
+        let output = loop {
             match self.state {
+                ReadState::Connecting => match self.vchan.status() {
+                    vchan::Status::Waiting => return Ok(None),
+                    vchan::Status::Connected => {
+                        self.state = ReadState::ReadingHeader;
+                        self.did_reconnect = true;
+                    }
+                    vchan::Status::Disconnected => {
+                        return Err(Error::new(ErrorKind::Other, "vchan connection refused"))
+                    }
+                },
                 ReadState::Error => {
-                    break Err(Error::new(ErrorKind::Other, "Already in error state"))
+                    return Err(Error::new(ErrorKind::Other, "Already in error state"))
                 }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
                     let mut header = <Header as Default>::default();
@@ -198,6 +224,9 @@ impl<T: VchanMock> Vchan<T> {
                 }
                 ReadState::ReadingHeader => break Ok(None),
                 ReadState::Discard(len) => {
+                    if ready == 0 {
+                        break Ok(None);
+                    }
                     self.buffer.resize(256.min(len).max(self.buffer.len()), 0);
                     let buf_len = self.buffer.len();
                     let bytes_read = self.recv(0..ready.min(len.min(buf_len) as usize))?;
@@ -211,6 +240,9 @@ impl<T: VchanMock> Vchan<T> {
                     }
                 }
                 ReadState::ReadingBody(header, read_so_far) => {
+                    if ready == 0 {
+                        break Ok(None);
+                    }
                     let buffer_len = self.buffer.len();
                     let to_read = ready.min(buffer_len - read_so_far);
                     let bytes_read = self.recv(read_so_far..read_so_far + to_read)?;
@@ -225,7 +257,14 @@ impl<T: VchanMock> Vchan<T> {
                     }
                 }
             }
+        };
+        if matches!(self.state, ReadState::Error)
+            && matches!(self.vchan.status(), vchan::Status::Disconnected)
+        {
+            self.vchan = <T as VchanMock>::recreate(self.domid)?;
+            self.state = ReadState::Connecting;
         }
+        output
     }
 }
 
@@ -251,6 +290,8 @@ impl Vchan<vchan::Vchan> {
             header: Default::default(),
             state: ReadState::ReadingHeader,
             buffer: vec![],
+            did_reconnect: false,
+            domid: domain,
         };
         res.write(((1u32 << 16) | 3u32).as_bytes())?;
         res.drain()?;
@@ -267,6 +308,8 @@ impl Vchan<vchan::Vchan> {
             header: Default::default(),
             state: ReadState::ReadingHeader,
             buffer: vec![],
+            did_reconnect: false,
+            domid: domain,
         })
     }
 
@@ -288,6 +331,12 @@ mod tests {
 
     impl VchanMock for MockVchan {
         fn wait(&self) {}
+        fn recreate(_domid: u16) -> io::Result<Self> {
+            unreachable!()
+        }
+        fn status(&self) -> vchan::Status {
+            vchan::Status::Connected
+        }
         fn data_ready(&self) -> usize {
             self.data_ready
         }
@@ -334,6 +383,8 @@ mod tests {
             header: Default::default(),
             state: ReadState::ReadingHeader,
             buffer: vec![],
+            did_reconnect: false,
+            domid: 0,
         };
         under_test.write(b"test1").unwrap();
         assert_eq!(under_test.queue.len(), 1, "message queued");
