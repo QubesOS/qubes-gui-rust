@@ -167,6 +167,7 @@ impl<T: VchanMock> Vchan<T> {
     /// returns `Ok(Some(msg))` if a complete message has been read, or `Err`
     /// if something went wrong.
     pub fn read_header(&mut self) -> io::Result<Option<(Header, &[u8])>> {
+        const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConf>();
         if let Err(e) = self.drain() {
             self.state = ReadState::Error;
             return Err(e);
@@ -188,10 +189,12 @@ impl<T: VchanMock> Vchan<T> {
                 ReadState::Error => {
                     return Err(Error::new(ErrorKind::Other, "Already in error state"))
                 }
-                ReadState::ReadingXConf if ready >= 2 => {
+                ReadState::ReadingXConf if ready >= SIZE_OF_XCONF => {
                     match self.vchan.recv(self.xconf.as_mut_bytes()) {
-                        Ok(2) => self.state = ReadState::ReadingHeader,
-                        Ok(x) if x > 2 => unreachable!("libvchan_recv read too many bytes?"),
+                        Ok(SIZE_OF_XCONF) => self.state = ReadState::ReadingHeader,
+                        Ok(x) if x > SIZE_OF_XCONF => {
+                            unreachable!("libvchan_recv read too many bytes?")
+                        }
                         Ok(_) | Err(_) => {
                             self.state = ReadState::Error;
                             return Err(Error::new(ErrorKind::Other, "Bad read from vchan"));
@@ -338,7 +341,9 @@ impl Vchan<Option<vchan::Vchan>> {
             4096,
             4096,
         )?);
+        self.buffer.clear();
         self.state = ReadState::Connecting;
+        self.vchan.send(((1u32 << 16) | 3u32).as_bytes())?;
         Ok(())
     }
 
