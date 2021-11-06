@@ -35,7 +35,7 @@ mod buffer;
 /// The entry-point to the library.
 #[derive(Debug)]
 pub struct Client {
-    vchan: buffer::Vchan<vchan::Vchan>,
+    vchan: buffer::Vchan<Option<vchan::Vchan>>,
     set: BTreeSet<NonZeroU32>,
     agent: bool,
 }
@@ -118,8 +118,8 @@ impl Client {
     }
 
     /// Creates an daemon instance
-    pub fn daemon(domain: u16) -> io::Result<Self> {
-        let vchan = buffer::Vchan::daemon(domain)?;
+    pub fn daemon(domain: u16, xconf: qubes_gui::XConf) -> io::Result<Self> {
+        let vchan = buffer::Vchan::daemon(domain, xconf)?;
         Ok(Self {
             vchan,
             set: Default::default(),
@@ -138,9 +138,20 @@ impl Client {
         Ok((s, conf))
     }
 
+    /// Try to reconnect.  If this fails, the agent is no longer usable; future
+    /// operations may panic.
+    pub fn reconnect(&mut self) -> io::Result<()> {
+        self.vchan.reconnect()
+    }
+
     /// Gets and clears the “did_reconnect” flag
     pub fn reconnected(&mut self) -> bool {
         self.vchan.reconnected()
+    }
+
+    /// Returns true if a reconnection is needed.
+    pub fn needs_reconnect(&self) -> bool {
+        self.vchan.needs_reconnect()
     }
 }
 
