@@ -341,6 +341,7 @@ impl Vchan<Option<vchan::Vchan>> {
             4096,
             4096,
         )?);
+        self.offset = 0;
         self.queue.clear();
         self.buffer.clear();
         self.state = ReadState::Connecting;
