@@ -24,7 +24,7 @@
 use qubes_castable::Castable as _;
 use qubes_gui::Header;
 use std::collections::VecDeque;
-use std::io::{self, Error, ErrorKind};
+use std::io::{self, Error, ErrorKind, Read};
 use std::mem::size_of;
 use std::ops::Range;
 
@@ -56,7 +56,7 @@ impl VchanMock for Option<vchan::Vchan> {
         vchan::Vchan::buffer_space(self.as_ref().unwrap())
     }
     fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        vchan::Vchan::recv(self.as_mut().unwrap(), buf)
+        <vchan::Vchan as Read>::read(self.as_mut().unwrap(), buf)
     }
     fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
         vchan::Vchan::send(self.as_mut().unwrap(), buf)
@@ -179,7 +179,6 @@ impl<T: VchanMock> Vchan<T> {
                     vchan::Status::Waiting => return Ok(None),
                     vchan::Status::Connected => {
                         self.state = ReadState::ReadingXConf;
-                        self.did_reconnect = true;
                     }
                     vchan::Status::Disconnected => {
                         self.state = ReadState::Error;
@@ -191,7 +190,11 @@ impl<T: VchanMock> Vchan<T> {
                 }
                 ReadState::ReadingXConf if ready >= SIZE_OF_XCONF => {
                     match self.vchan.recv(self.xconf.as_mut_bytes()) {
-                        Ok(SIZE_OF_XCONF) => self.state = ReadState::ReadingHeader,
+                        Ok(SIZE_OF_XCONF) => {
+                            self.state = ReadState::ReadingHeader;
+                            self.did_reconnect = true;
+                            break Ok(None);
+                        }
                         Ok(x) if x > SIZE_OF_XCONF => {
                             unreachable!("libvchan_recv read too many bytes?")
                         }
@@ -278,8 +281,7 @@ impl<T: VchanMock> Vchan<T> {
     }
 
     pub fn needs_reconnect(&self) -> bool {
-        matches!(self.state, ReadState::Error)
-            || matches!(self.vchan.status(), vchan::Status::Disconnected)
+        matches!(self.vchan.status(), vchan::Status::Disconnected)
     }
 }
 
@@ -311,7 +313,10 @@ impl Vchan<Option<vchan::Vchan>> {
         };
         res.write(((1u32 << 16) | 3u32).as_bytes())?;
         res.drain()?;
-        res.vchan.recv(res.xconf.as_mut_bytes())?;
+        res.vchan
+            .as_mut()
+            .expect("Set to Some above; qed")
+            .recv(res.xconf.as_mut_bytes())?;
         let xconf = res.xconf;
         Ok((res, xconf))
     }
