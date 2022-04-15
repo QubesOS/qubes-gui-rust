@@ -4,7 +4,9 @@ version = 3
 
 [[package]]
 name = "libc"
-version = "0.2.95"
+version = "0.2.121"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = ""
 
 [[package]]
 name = "qubes-castable"

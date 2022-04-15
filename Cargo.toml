@@ -9,5 +9,4 @@ members = [
   "qubes-gui-agent-proto",
   "vchan",
   "vchan-sys",
-  "vendor/libc",
 ]

@@ -12,4 +12,4 @@ qubes-gui-client = { path = "../qubes-gui-client", version = "0.1.0" }
 qubes-castable = { path = "../qubes-castable", version = "0.1.0" }
 qubes-gui-gntalloc = { path = "../qubes-gui-gntalloc", version = "0.1.0" }
 qubes-gui-agent-proto = { path = "../qubes-gui-agent-proto" }
-libc = { path = "../vendor/libc", version = "*" }
+libc = { version = "0.2.80" }

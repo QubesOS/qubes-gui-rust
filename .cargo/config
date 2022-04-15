@@ -1,0 +1,12 @@
+[net]
+git-fetch-with-cli = true
+offline = false
+
+[source]
+
+[source.local-registry]
+directory = "/usr/share/cargo/registry"
+
+[source.crates-io]
+registry = "https://crates.io"
+replace-with = "local-registry"
