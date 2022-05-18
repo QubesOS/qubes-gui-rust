@@ -316,7 +316,7 @@ pub enum WindowFlag {
 /// Trait for Qubes GUI structs, specifying the message number.
 pub trait Message: qubes_castable::Castable + core::default::Default {
     /// The kind of the message
-    fn kind() -> Msg;
+    const KIND: Msg;
 }
 
 qubes_castable::castable! {
@@ -578,9 +578,7 @@ qubes_castable::castable! {
 macro_rules! impl_message {
     ($(($t: ty, $kind: expr),)+) => {
         $(impl Message for $t {
-            fn kind() -> Msg {
-                $kind
-            }
+            const KIND: Msg = $kind;
         })+
     }
 }

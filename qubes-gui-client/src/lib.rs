@@ -48,7 +48,7 @@ impl Client {
         message: &T,
         window: NonZeroU32,
     ) -> io::Result<()> {
-        self.send_raw(message.as_bytes(), window, T::kind() as _)
+        self.send_raw(message.as_bytes(), window, T::KIND as _)
     }
 
     /// Raw version of [`Client::send`].  Using [`Client::send`] is preferred
