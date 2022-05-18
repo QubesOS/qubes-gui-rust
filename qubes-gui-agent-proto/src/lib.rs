@@ -123,6 +123,11 @@ impl<'a> DaemonToAgentEvent<'a> {
     /// The caller is expected to have validated this earlier, using
     /// [`qubes_gui::msg_length_limits`].
     ///
+    /// # Return
+    ///
+    /// Returns `Ok(Some(window, event))` on success.  Returns `Ok(None)` if the
+    /// message number is not known.
+    ///
     /// # Errors
     ///
     /// Fails if the given GUI message cannot be parsed.
