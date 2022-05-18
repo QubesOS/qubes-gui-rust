@@ -112,9 +112,7 @@
 
 #![forbid(missing_docs)]
 #![no_std]
-use core;
 use core::num::NonZeroU32;
-use qubes_castable;
 
 /// Arbitrary maximum size of a clipboard message
 pub const MAX_CLIPBOARD_SIZE: u32 = 65000;
@@ -180,18 +178,18 @@ macro_rules! enum_const {
             )*
         }
 
-        impl $crate::core::convert::TryFrom::<$t> for $n {
+        impl ::core::convert::TryFrom::<$t> for $n {
             type Error = $t;
             #[allow(non_upper_case_globals)]
-            fn try_from(value: $t) -> $crate::core::result::Result<Self, $t> {
+            fn try_from(value: $t) -> ::core::result::Result<Self, $t> {
                 $(
                     const $const_name: $t = $n::$variant_name as $t;
                 )*
                 match value {
                     $(
-                        $const_name => return $crate::core::result::Result::Ok($n::$variant_name),
+                        $const_name => return ::core::result::Result::Ok($n::$variant_name),
                     )*
-                    other => $crate::core::result::Result::Err(other),
+                    other => ::core::result::Result::Err(other),
                 }
             }
         }
