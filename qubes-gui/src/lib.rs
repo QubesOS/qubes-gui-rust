@@ -157,6 +157,8 @@ pub const LISTENING_PORT: i16 = 6000;
 /// Type of grant refs dump messages
 pub const WINDOW_DUMP_TYPE_GRANT_REFS: u32 = 0;
 
+// This allows pattern-matching integers against enum variants without a huge
+// amount of boilerplate code.
 macro_rules! enum_const {
     (
         #[repr($t: ident)]
@@ -178,6 +180,22 @@ macro_rules! enum_const {
             )*
         }
 
+        impl $crate::core::convert::TryFrom::<$t> for $n {
+            type Error = $t;
+            #[allow(non_upper_case_globals)]
+            fn try_from(value: $t) -> $crate::core::result::Result<Self, $t> {
+                $(
+                    $(#[$j])*
+                    pub const $const_name: $t = $n::$variant_name as $t;
+                )*
+                match value {
+                    $(
+                        $const_name => return $crate::core::result::Result::Ok($n::$variant_name),
+                    )*
+                    other => $crate::core::result::Result::Err(other),
+                }
+            }
+        }
         $(
             $(#[$j])*
             $p const $const_name: $t = $n::$variant_name as $t;
