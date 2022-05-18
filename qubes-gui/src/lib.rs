@@ -157,8 +157,8 @@ pub const LISTENING_PORT: i16 = 6000;
 /// Type of grant refs dump messages
 pub const WINDOW_DUMP_TYPE_GRANT_REFS: u32 = 0;
 
-// This allows pattern-matching integers against enum variants without a huge
-// amount of boilerplate code.
+// This allows pattern-matching against constant values without a huge amount of
+// boilerplate code.
 macro_rules! enum_const {
     (
         #[repr($t: ident)]
@@ -172,7 +172,7 @@ macro_rules! enum_const {
     ) => {
         $(#[$i])*
         #[repr($t)]
-        #[non_exhaustive]
+        // #[non_exhaustive]
         $p enum $n {
             $(
                 $(#[$j])*
@@ -185,8 +185,7 @@ macro_rules! enum_const {
             #[allow(non_upper_case_globals)]
             fn try_from(value: $t) -> $crate::core::result::Result<Self, $t> {
                 $(
-                    $(#[$j])*
-                    pub const $const_name: $t = $n::$variant_name as $t;
+                    const $const_name: $t = $n::$variant_name as $t;
                 )*
                 match value {
                     $(
@@ -196,10 +195,6 @@ macro_rules! enum_const {
                 }
             }
         }
-        $(
-            $(#[$j])*
-            $p const $const_name: $t = $n::$variant_name as $t;
-        )*
     }
 }
 
@@ -323,7 +318,7 @@ pub enum WindowFlag {
 /// Trait for Qubes GUI structs, specifying the message number.
 pub trait Message: qubes_castable::Castable + core::default::Default {
     /// The kind of the message
-    fn kind() -> u32;
+    fn kind() -> Msg;
 }
 
 qubes_castable::castable! {
@@ -585,7 +580,7 @@ qubes_castable::castable! {
 macro_rules! impl_message {
     ($(($t: ty, $kind: expr),)+) => {
         $(impl Message for $t {
-            fn kind() -> u32 {
+            fn kind() -> Msg {
                 $kind
             }
         })+
@@ -593,59 +588,59 @@ macro_rules! impl_message {
 }
 
 impl_message! {
-    (MapInfo, MSG_MAP),
-    (Create, MSG_CREATE),
-    (Keypress, MSG_KEYPRESS),
-    (Button, MSG_BUTTON),
-    (Motion, MSG_MOTION),
-    (Crossing, MSG_CROSSING),
-    (Configure, MSG_CONFIGURE),
-    (ShmImage, MSG_SHMIMAGE),
-    (Focus, MSG_FOCUS),
-    (WMName, MSG_SET_TITLE),
-    (KeymapNotify, MSG_KEYMAP_NOTIFY),
-    (WindowHints, MSG_WINDOW_HINTS),
-    (WindowFlags, MSG_WINDOW_FLAGS),
-    (ShmCmd, MSG_MFNDUMP),
-    (WMClass, MSG_WINDOW_CLASS),
-    (WindowDumpHeader, MSG_WINDOW_DUMP),
-    (Cursor, MSG_CURSOR),
-    (Destroy, MSG_DESTROY),
-    (Dock, MSG_DOCK),
-    (Unmap, MSG_UNMAP),
+    (MapInfo, Msg::Map),
+    (Create, Msg::Create),
+    (Keypress, Msg::Keypress),
+    (Button, Msg::Button),
+    (Motion, Msg::Motion),
+    (Crossing, Msg::Crossing),
+    (Configure, Msg::Configure),
+    (ShmImage, Msg::ShmImage),
+    (Focus, Msg::Focus),
+    (WMName, Msg::SetTitle),
+    (KeymapNotify, Msg::KeymapNotify),
+    (WindowHints, Msg::WindowHints),
+    (WindowFlags, Msg::WindowFlags),
+    (ShmCmd, Msg::ShmImage),
+    (WMClass, Msg::WindowClass),
+    (WindowDumpHeader, Msg::WindowDump),
+    (Cursor, Msg::Cursor),
+    (Destroy, Msg::Destroy),
+    (Dock, Msg::Dock),
+    (Unmap, Msg::Unmap),
 }
 
 /// Gets the length limits of a message of a given type, or `None` for an
 /// unknown message (for which there are no limits).
 pub fn msg_length_limits(ty: u32) -> Option<core::ops::RangeInclusive<usize>> {
-    use core::mem::size_of;
-    Some(match ty {
-        MSG_CLIPBOARD_DATA => 0..=MAX_CLIPBOARD_SIZE as _,
-        MSG_BUTTON => size_of::<Button>()..=size_of::<Button>(),
-        MSG_KEYPRESS => size_of::<Keypress>()..=size_of::<Keypress>(),
-        MSG_MOTION => size_of::<Motion>()..=size_of::<Motion>(),
-        MSG_CROSSING => size_of::<Crossing>()..=size_of::<Crossing>(),
-        MSG_FOCUS => size_of::<Focus>()..=size_of::<Focus>(),
-        MSG_CREATE => size_of::<Create>()..=size_of::<Create>(),
-        MSG_DESTROY => 0..=0,
-        MSG_MAP => size_of::<MapInfo>()..=size_of::<MapInfo>(),
-        MSG_UNMAP => 0..=0,
-        MSG_CONFIGURE => size_of::<Configure>()..=size_of::<Configure>(),
-        MSG_MFNDUMP => 0..=4 * MAX_MFN_COUNT as usize,
-        MSG_SHMIMAGE => size_of::<ShmImage>()..=size_of::<ShmImage>(),
-        MSG_CLOSE => 0..=0,
-        MSG_CLIPBOARD_REQ => 0..=0,
-        MSG_SET_TITLE => size_of::<WMName>()..=size_of::<WMName>(),
-        MSG_KEYMAP_NOTIFY => size_of::<KeymapNotify>()..=size_of::<KeymapNotify>(),
-        MSG_DOCK => 0..=0,
-        MSG_WINDOW_HINTS => size_of::<WindowHints>()..=size_of::<KeymapNotify>(),
-        MSG_WINDOW_FLAGS => size_of::<WindowFlags>()..=size_of::<WindowFlags>(),
-        MSG_WINDOW_CLASS => size_of::<WMClass>()..=size_of::<WMClass>(),
-        MSG_WINDOW_DUMP => {
+    use core::{convert::TryFrom, mem::size_of};
+    Some(match Msg::try_from(ty).ok()? {
+        Msg::ClipboardData => 0..=MAX_CLIPBOARD_SIZE as _,
+        Msg::Button => size_of::<Button>()..=size_of::<Button>(),
+        Msg::Keypress => size_of::<Keypress>()..=size_of::<Keypress>(),
+        Msg::Motion => size_of::<Motion>()..=size_of::<Motion>(),
+        Msg::Crossing => size_of::<Crossing>()..=size_of::<Crossing>(),
+        Msg::Focus => size_of::<Focus>()..=size_of::<Focus>(),
+        Msg::Create => size_of::<Create>()..=size_of::<Create>(),
+        Msg::Destroy => 0..=0,
+        Msg::Map => size_of::<MapInfo>()..=size_of::<MapInfo>(),
+        Msg::Unmap => 0..=0,
+        Msg::Configure => size_of::<Configure>()..=size_of::<Configure>(),
+        Msg::MfnDump => 0..=4 * MAX_MFN_COUNT as usize,
+        Msg::ShmImage => size_of::<ShmImage>()..=size_of::<ShmImage>(),
+        Msg::Close => 0..=0,
+        Msg::ClipboardReq => 0..=0,
+        Msg::SetTitle => size_of::<WMName>()..=size_of::<WMName>(),
+        Msg::KeymapNotify => size_of::<KeymapNotify>()..=size_of::<KeymapNotify>(),
+        Msg::Dock => 0..=0,
+        Msg::WindowHints => size_of::<WindowHints>()..=size_of::<KeymapNotify>(),
+        Msg::WindowFlags => size_of::<WindowFlags>()..=size_of::<WindowFlags>(),
+        Msg::WindowClass => size_of::<WMClass>()..=size_of::<WMClass>(),
+        Msg::WindowDump => {
             size_of::<WindowDumpHeader>()
                 ..=size_of::<WindowDumpHeader>() + 4 * MAX_GRANT_REFS_COUNT as usize
         }
-        MSG_CURSOR => size_of::<Cursor>()..=size_of::<Cursor>(),
-        MSG_EXECUTE | MSG_RESIZE | _ => return None,
+        Msg::Cursor => size_of::<Cursor>()..=size_of::<Cursor>(),
+        Msg::Execute | Msg::Resize => return None,
     })
 }

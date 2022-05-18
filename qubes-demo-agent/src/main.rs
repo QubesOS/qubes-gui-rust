@@ -28,13 +28,13 @@ fn main() -> std::io::Result<()> {
         (width * height).try_into().unwrap(),
     );
     vchan
-        .send_raw(buf.msg(), window, qubes_gui::MSG_WINDOW_DUMP)
+        .send_raw(buf.msg(), window, qubes_gui::Msg::WindowDump as _)
         .unwrap();
     let title = b"Qubes Demo Rust GUI Agent";
     let mut title_buf = [0u8; 128];
     title_buf[..title.len()].copy_from_slice(title);
     vchan
-        .send_raw(&mut title_buf, window, qubes_gui::MSG_SET_TITLE)
+        .send_raw(&mut title_buf, window, qubes_gui::Msg::SetTitle as _)
         .unwrap();
     vchan
         .send(
@@ -90,7 +90,7 @@ fn main() -> std::io::Result<()> {
                     .send_raw(
                         buf.msg(),
                         50.try_into().unwrap(),
-                        qubes_gui::MSG_WINDOW_DUMP,
+                        qubes_gui::Msg::WindowDump as _,
                     )
                     .unwrap();
 

@@ -132,68 +132,86 @@ impl<'a> DaemonToAgentEvent<'a> {
     ///
     /// Fails if the given GUI message cannot be parsed.
     pub fn parse(header: qubes_gui::Header, body: &'a [u8]) -> Result<Option<(u32, Self)>, Error> {
+        use qubes_gui::Msg;
         assert_eq!(
             header.untrusted_len.try_into(),
             Ok(body.len()),
             "Wrong body length provided!"
         );
         let window = header.window;
-        let res = match header.ty {
-            qubes_gui::MSG_MOTION => {
+        let ty = match header.ty.try_into() {
+            Ok(ty) => ty,
+            Err(_) => return Ok(None),
+        };
+        let res = match ty {
+            Msg::Motion => {
                 let mut event = qubes_gui::Motion::default();
                 event.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::Motion { event }
             }
-            qubes_gui::MSG_CROSSING => {
+            Msg::Crossing => {
                 let mut event = qubes_gui::Crossing::default();
                 event.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::Crossing { event }
             }
-            qubes_gui::MSG_CLOSE => DaemonToAgentEvent::Close,
-            qubes_gui::MSG_KEYPRESS => {
+            Msg::Close => DaemonToAgentEvent::Close,
+            Msg::Keypress => {
                 let mut event = qubes_gui::Keypress::default();
                 event.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::Keypress { event }
             }
-            qubes_gui::MSG_BUTTON => {
+            Msg::Button => {
                 let mut event = qubes_gui::Button::default();
                 event.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::Button { event }
             }
-            qubes_gui::MSG_CLIPBOARD_REQ => DaemonToAgentEvent::Copy,
-            qubes_gui::MSG_CLIPBOARD_DATA => {
+            Msg::ClipboardReq => DaemonToAgentEvent::Copy,
+            Msg::ClipboardData => {
                 let untrusted_data = core::str::from_utf8(body).map_err(Error::BadUTF8)?;
                 DaemonToAgentEvent::Paste { untrusted_data }
             }
-            qubes_gui::MSG_KEYMAP_NOTIFY => {
+            Msg::KeymapNotify => {
                 let mut new_keymap = qubes_gui::KeymapNotify::default();
                 new_keymap.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::Keymap { new_keymap }
             }
-            qubes_gui::MSG_MAP => {
+            Msg::Map => {
                 let mut portion_to_redraw = qubes_gui::MapInfo::default();
                 portion_to_redraw.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::Redraw { portion_to_redraw }
             }
-            qubes_gui::MSG_CONFIGURE => {
+            Msg::Unmap => {
                 let mut new_size_and_position = qubes_gui::Configure::default();
                 new_size_and_position.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::Configure {
                     new_size_and_position,
                 }
             }
-            qubes_gui::MSG_FOCUS => {
+            Msg::Focus => {
                 let mut event = qubes_gui::Focus::default();
                 event.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::Focus { event }
             }
-            qubes_gui::MSG_WINDOW_FLAGS => {
+            Msg::WindowFlags => {
                 let mut flags = qubes_gui::WindowFlags::default();
                 flags.as_mut_bytes().copy_from_slice(body);
                 DaemonToAgentEvent::WindowFlags { flags }
             }
-            qubes_gui::MSG_DESTROY => DaemonToAgentEvent::Destroy,
-            _ => return Ok(None),
+            Msg::Destroy => DaemonToAgentEvent::Destroy,
+            // Agent ⇒ daemon messages
+            Msg::Resize
+            | Msg::Create
+            | Msg::Configure
+            | Msg::MfnDump
+            | Msg::ShmImage
+            | Msg::Execute
+            | Msg::SetTitle
+            | Msg::Dock
+            | Msg::WindowHints
+            | Msg::WindowClass
+            | Msg::WindowDump
+            | Msg::Cursor => return Ok(None),
+            // _ => return Ok(None),
         };
         Ok(Some((window, res)))
     }

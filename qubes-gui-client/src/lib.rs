@@ -48,7 +48,7 @@ impl Client {
         message: &T,
         window: NonZeroU32,
     ) -> io::Result<()> {
-        self.send_raw(message.as_bytes(), window, T::kind())
+        self.send_raw(message.as_bytes(), window, T::kind() as _)
     }
 
     /// Raw version of [`Client::send`].  Using [`Client::send`] is preferred
@@ -66,13 +66,13 @@ impl Client {
             untrusted_len,
         };
         if self.agent {
-            if header.ty == qubes_gui::MSG_CREATE {
+            if header.ty == qubes_gui::Msg::Create as _ {
                 assert!(
                     self.set.insert(window),
                     "Creating window {} already in map!",
                     window
                 );
-            } else if header.ty == qubes_gui::MSG_DESTROY {
+            } else if header.ty == qubes_gui::Msg::Destroy as _ {
                 assert!(
                     self.set.remove(&window),
                     "Trying to delete window {} not in map!",
