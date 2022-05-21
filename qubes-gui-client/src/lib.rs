@@ -26,6 +26,7 @@
 use qubes_castable::Castable as _;
 pub use qubes_gui;
 use std::collections::BTreeSet;
+use std::convert::TryInto;
 use std::io;
 use std::num::NonZeroU32;
 use std::task::Poll;
@@ -54,12 +55,10 @@ impl Client {
     /// Raw version of [`Client::send`].  Using [`Client::send`] is preferred
     /// where possible, as it automatically selects the correct message type.
     pub fn send_raw(&mut self, message: &[u8], window: NonZeroU32, ty: u32) -> io::Result<()> {
-        let untrusted_len = message.len() as u32;
-        assert_eq!(
-            untrusted_len as usize,
-            message.len(),
-            "Message length must fit in a u32"
-        );
+        let untrusted_len = message
+            .len()
+            .try_into()
+            .expect("Message length must fit in a u32");
         let header = qubes_gui::Header {
             ty,
             window: window.into(),
