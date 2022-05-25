@@ -69,6 +69,53 @@ pub unsafe trait Castable:
             core::slice::from_raw_parts_mut(raw_ptr as *mut u8, size)
         }
     }
+
+    /// Creates a [`Castable`] type from an `&[u8]`.
+    ///
+    /// This is safe because [`Castable`] objects have no padding bytes, and any
+    /// bit pattern is valid for them.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the length of `buf` is not equal to `size_of::<Self>`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use core::num::NonZeroU8;
+    /// # use qubes_castable::Castable;
+    /// # use core::convert::TryInto;
+    /// assert_eq!(<Option<NonZeroU8>>::from_bytes(&[0]), None);
+    /// assert_eq!(<Option<NonZeroU8>>::from_bytes(&[1]), Some(1u8.try_into().unwrap()));
+    /// ```
+    fn from_bytes(buf: &[u8]) -> Self
+    where
+        Self: Sized + Castable,
+    {
+        assert_eq!(
+            buf.len(),
+            core::mem::size_of::<Self>(),
+            "Size mismatch: got {} bytes but expected {}",
+            buf.len(),
+            core::mem::size_of::<Self>()
+        );
+        let mut this = core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            // SAFETY: `this` has the same size as `Self`, and a local variable
+            // cannot alias a function argument.  Furthermore, `buf` was checked
+            // to be the same size as `Self`.
+            core::ptr::copy_nonoverlapping(
+                buf.as_ptr(),
+                &mut this as *mut core::mem::MaybeUninit<Self> as *mut u8,
+                core::mem::size_of::<Self>(),
+            );
+            // SAFETY: `this` was initialized by the above call to
+            // `copy_nonoverlapping`.  Since `Self` is `Castable`,
+            // *any* bit pattern is valid for it, so `this` was
+            // *correctly* initialized.
+            this.assume_init()
+        }
+    }
 }
 
 // This unsafely implements Castable for a type, checking only that it is
