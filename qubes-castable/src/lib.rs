@@ -127,6 +127,19 @@ pub unsafe trait Castable:
             this.assume_init()
         }
     }
+
+    /// Creates a zeroed instance of any [`Castable`] type
+    ///
+    /// This is safe because [`Castable`] objects have no padding bytes, and any
+    /// bit pattern is valid for them.
+    fn zeroed() -> Self
+    where
+        Self: Sized + Castable,
+    {
+        // SAFETY:  Since `Self` is `Castable`, *any* bit pattern is valid for
+        // it, so this cannot create a value with an invalid bit pattern.
+        unsafe { core::mem::zeroed() }
+    }
 }
 
 // This unsafely implements Castable for a type, checking only that it is
@@ -359,11 +372,7 @@ macro_rules! castable {
         }
         impl $crate::core::default::Default for $s {
             fn default() -> Self {
-                // SAFETY: all Castable types have all bit patterns valid,
-                // including zero
-                unsafe {
-                    $crate::core::mem::zeroed()
-                }
+                <$s as $crate::Castable>::zeroed()
             }
         }
         )+
