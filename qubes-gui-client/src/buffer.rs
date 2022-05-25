@@ -108,7 +108,7 @@ impl<T: VchanMock> RawMessageStream<T> {
         }
     }
 
-    fn drain(&mut self) -> io::Result<usize> {
+    fn flush_pending_writes(&mut self) -> io::Result<usize> {
         let mut written = 0;
         loop {
             let front: &mut _ = match self.queue.front_mut() {
@@ -131,7 +131,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     }
 
     pub fn write(&mut self, buf: &[u8]) -> io::Result<()> {
-        self.drain()?;
+        self.flush_pending_writes()?;
         if !self.queue.is_empty() {
             self.queue.push_back(buf.to_owned());
             return Ok(());
@@ -167,7 +167,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     /// if something went wrong.
     pub fn read_header(&mut self) -> io::Result<Option<(Header, &[u8])>> {
         const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConf>();
-        if let Err(e) = self.drain() {
+        if let Err(e) = self.flush_pending_writes() {
             self.state = ReadState::Error;
             return Err(e);
         }
@@ -310,7 +310,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
             xconf: Default::default(),
         };
         res.write(((1u32 << 16) | 3u32).as_bytes())?;
-        res.drain()?;
+        res.flush_pending_writes()?;
         res.vchan
             .as_mut()
             .expect("Set to Some above; qed")
@@ -427,7 +427,9 @@ mod tests {
         assert_eq!(under_test.offset, 0, "no bytes written");
         assert_eq!(under_test.vchan.write_buf, b"", "no bytes written");
         under_test.vchan.buffer_space = 3;
-        under_test.drain().expect("drained successfully");
+        under_test
+            .flush_pending_writes()
+            .expect("drained successfully");
         assert_eq!(under_test.queue.len(), 1);
         assert_eq!(under_test.queue[0], b"test1");
         assert_eq!(under_test.offset, 3);
@@ -443,7 +445,9 @@ mod tests {
         );
         assert_eq!(under_test.offset, 0);
         under_test.vchan.buffer_space = 2;
-        under_test.drain().expect("drained successfully");
+        under_test
+            .flush_pending_writes()
+            .expect("drained successfully");
         assert_eq!(under_test.vchan.write_buf, b"test1\0ano");
         assert_eq!(under_test.vchan.buffer_space, 0);
         under_test.vchan.buffer_space = 7;
