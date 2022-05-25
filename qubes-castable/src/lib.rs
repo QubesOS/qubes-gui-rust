@@ -110,21 +110,19 @@ pub unsafe trait Castable:
             buf.len(),
             core::mem::size_of::<Self>()
         );
-        let mut this = core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            // SAFETY: `this` has the same size as `Self`, and a local variable
-            // cannot alias a function argument.  Furthermore, `buf` was checked
-            // to be the same size as `Self`.
-            core::ptr::copy_nonoverlapping(
-                buf.as_ptr(),
-                &mut this as *mut core::mem::MaybeUninit<Self> as *mut u8,
-                core::mem::size_of::<Self>(),
-            );
-            // SAFETY: `this` was initialized by the above call to
-            // `copy_nonoverlapping`.  Since `Self` is `Castable`,
-            // *any* bit pattern is valid for it, so `this` was
-            // *correctly* initialized.
-            this.assume_init()
+        if core::mem::size_of::<Self>() == 0 {
+            // For a zero-sized type, it does not matter what value to return,
+            // as there is only one.  Use `zeroed` to return something.
+            Self::zeroed()
+        } else {
+            // SAFETY: `buf` was checked to be the same size as `Self`, and
+            // `Self` has a nonzero length, `buf.len()` must also be nonzero.
+            // Therefore, `buf.as_ptr()` is a valid pointer that can have
+            // `size_of::<Self>()` bytes read from it.  Since `Self` is
+            // `Castable`, *any* bit pattern is valid for it, so this cannot
+            // create a value with an invalid bit pattern.  `buf.ptr()` is *not*
+            // guaranteed to be aligned, so use `read_unaligned`.
+            unsafe { core::ptr::read_unaligned(buf.as_ptr() as *const Self) }
         }
     }
 
