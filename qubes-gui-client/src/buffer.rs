@@ -75,7 +75,7 @@ impl VchanMock for Option<vchan::Vchan> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Vchan<T: VchanMock> {
+pub(crate) struct RawMessageStream<T: VchanMock> {
     vchan: T,
     queue: VecDeque<Vec<u8>>,
     offset: usize,
@@ -97,7 +97,7 @@ fn u32_to_usize(i: u32) -> usize {
     i as usize
 }
 
-impl<T: VchanMock> Vchan<T> {
+impl<T: VchanMock> RawMessageStream<T> {
     fn write_slice(vchan: &mut T, slice: &[u8]) -> io::Result<usize> {
         let space = vchan.buffer_space();
         if space == 0 {
@@ -284,7 +284,7 @@ impl<T: VchanMock> Vchan<T> {
     }
 }
 
-impl Vchan<Option<vchan::Vchan>> {
+impl RawMessageStream<Option<vchan::Vchan>> {
     pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
         let vchan = vchan::Vchan::server(domain, qubes_gui::LISTENING_PORT.into(), 4096, 4096)?;
         loop {
@@ -411,7 +411,7 @@ mod tests {
             data_ready: 0,
             cursor: 0,
         };
-        let mut under_test = Vchan::<MockVchan> {
+        let mut under_test = RawMessageStream::<MockVchan> {
             vchan: mock_vchan,
             queue: Default::default(),
             offset: 0,

@@ -36,7 +36,7 @@ mod buffer;
 /// The entry-point to the library.
 #[derive(Debug)]
 pub struct Client {
-    vchan: buffer::Vchan<Option<vchan::Vchan>>,
+    vchan: buffer::RawMessageStream<Option<vchan::Vchan>>,
     present_windows: BTreeSet<NonZeroU32>,
     agent: bool,
 }
@@ -118,7 +118,7 @@ impl Client {
 
     /// Creates an daemon instance
     pub fn daemon(domain: u16, xconf: qubes_gui::XConf) -> io::Result<Self> {
-        let vchan = buffer::Vchan::daemon(domain, xconf)?;
+        let vchan = buffer::RawMessageStream::daemon(domain, xconf)?;
         Ok(Self {
             vchan,
             present_windows: Default::default(),
@@ -128,7 +128,7 @@ impl Client {
 
     /// Creates a agent instance
     pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
-        let (vchan, conf) = buffer::Vchan::agent(domain)?;
+        let (vchan, conf) = buffer::RawMessageStream::agent(domain)?;
         let s = Self {
             vchan,
             present_windows: Default::default(),
