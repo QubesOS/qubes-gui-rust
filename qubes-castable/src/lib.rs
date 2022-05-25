@@ -81,12 +81,23 @@ pub unsafe trait Castable:
     ///
     /// # Example
     ///
+    /// Use it correctly:
+    ///
     /// ```rust
     /// # use core::num::NonZeroU8;
     /// # use qubes_castable::Castable;
     /// # use core::convert::TryInto;
     /// assert_eq!(<Option<NonZeroU8>>::from_bytes(&[0]), None);
     /// assert_eq!(<Option<NonZeroU8>>::from_bytes(&[1]), Some(1u8.try_into().unwrap()));
+    /// ```
+    ///
+    /// Pass an incorrect length and cause a panic:
+    ///
+    /// ```rust,should_panic
+    /// # use core::num::NonZeroU8;
+    /// # use qubes_castable::Castable;
+    /// # use core::convert::TryInto;
+    /// drop(<Option<NonZeroU8>>::from_bytes(&[]));
     /// ```
     fn from_bytes(buf: &[u8]) -> Self
     where
@@ -436,5 +447,11 @@ mod test {
                 i: Some(u32::to_be(100u32 << 24).try_into().unwrap())
             }
         );
+    }
+
+    #[test]
+    #[should_panic = "Size mismatch: got 0 bytes but expected 1"]
+    fn mismatch() {
+        drop(<Option<core::num::NonZeroU8>>::from_bytes(&[]))
     }
 }
