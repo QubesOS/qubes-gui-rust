@@ -37,7 +37,7 @@ mod buffer;
 #[derive(Debug)]
 pub struct Client {
     vchan: buffer::Vchan<Option<vchan::Vchan>>,
-    set: BTreeSet<NonZeroU32>,
+    present_windows: BTreeSet<NonZeroU32>,
     agent: bool,
 }
 
@@ -67,19 +67,19 @@ impl Client {
         if self.agent {
             if header.ty == qubes_gui::Msg::Create as _ {
                 assert!(
-                    self.set.insert(window),
+                    self.present_windows.insert(window),
                     "Creating window {} already in map!",
                     window
                 );
             } else if header.ty == qubes_gui::Msg::Destroy as _ {
                 assert!(
-                    self.set.remove(&window),
+                    self.present_windows.remove(&window),
                     "Trying to delete window {} not in map!",
                     window
                 );
             } else {
                 assert!(
-                    self.set.contains(&window),
+                    self.present_windows.contains(&window),
                     "Sending message on nonexistant window {}!",
                     window
                 )
@@ -121,7 +121,7 @@ impl Client {
         let vchan = buffer::Vchan::daemon(domain, xconf)?;
         Ok(Self {
             vchan,
-            set: Default::default(),
+            present_windows: Default::default(),
             agent: false,
         })
     }
@@ -131,7 +131,7 @@ impl Client {
         let (vchan, conf) = buffer::Vchan::agent(domain)?;
         let s = Self {
             vchan,
-            set: Default::default(),
+            present_windows: Default::default(),
             agent: true,
         };
         Ok((s, conf))
