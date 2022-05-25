@@ -26,7 +26,7 @@
 //! no I/O.
 
 use core::convert::TryInto as _;
-use qubes_castable::Castable as _;
+use qubes_castable::Castable;
 
 /// Errors when parsing an agent-side Qubes OS GUI Protocol message.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -144,59 +144,39 @@ impl<'a> DaemonToAgentEvent<'a> {
             Err(_) => return Ok(None),
         };
         let res = match ty {
-            Msg::Motion => {
-                let mut event = qubes_gui::Motion::default();
-                event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Motion { event }
-            }
-            Msg::Crossing => {
-                let mut event = qubes_gui::Crossing::default();
-                event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Crossing { event }
-            }
+            Msg::Motion => DaemonToAgentEvent::Motion {
+                event: Castable::from_bytes(body),
+            },
+            Msg::Crossing => DaemonToAgentEvent::Crossing {
+                event: Castable::from_bytes(body),
+            },
             Msg::Close => DaemonToAgentEvent::Close,
-            Msg::Keypress => {
-                let mut event = qubes_gui::Keypress::default();
-                event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Keypress { event }
-            }
-            Msg::Button => {
-                let mut event = qubes_gui::Button::default();
-                event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Button { event }
-            }
+            Msg::Keypress => DaemonToAgentEvent::Keypress {
+                event: Castable::from_bytes(body),
+            },
+            Msg::Button => DaemonToAgentEvent::Button {
+                event: Castable::from_bytes(body),
+            },
             Msg::ClipboardReq => DaemonToAgentEvent::Copy,
             Msg::ClipboardData => {
                 let untrusted_data = core::str::from_utf8(body).map_err(Error::BadUTF8)?;
                 DaemonToAgentEvent::Paste { untrusted_data }
             }
-            Msg::KeymapNotify => {
-                let mut new_keymap = qubes_gui::KeymapNotify::default();
-                new_keymap.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Keymap { new_keymap }
-            }
-            Msg::Map => {
-                let mut portion_to_redraw = qubes_gui::MapInfo::default();
-                portion_to_redraw.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Redraw { portion_to_redraw }
-            }
-            Msg::Unmap => {
-                let mut new_size_and_position = qubes_gui::Configure::default();
-                new_size_and_position.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Configure {
-                    new_size_and_position,
-                }
-            }
-            Msg::Focus => {
-                let mut event = qubes_gui::Focus::default();
-                event.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::Focus { event }
-            }
-            Msg::WindowFlags => {
-                let mut flags = qubes_gui::WindowFlags::default();
-                flags.as_mut_bytes().copy_from_slice(body);
-                DaemonToAgentEvent::WindowFlags { flags }
-            }
+            Msg::KeymapNotify => DaemonToAgentEvent::Keymap {
+                new_keymap: Castable::from_bytes(body),
+            },
+            Msg::Map => DaemonToAgentEvent::Redraw {
+                portion_to_redraw: Castable::from_bytes(body),
+            },
+            Msg::Unmap => DaemonToAgentEvent::Configure {
+                new_size_and_position: Castable::from_bytes(body),
+            },
+            Msg::Focus => DaemonToAgentEvent::Focus {
+                event: Castable::from_bytes(body),
+            },
+            Msg::WindowFlags => DaemonToAgentEvent::WindowFlags {
+                flags: Castable::from_bytes(body),
+            },
             Msg::Destroy => DaemonToAgentEvent::Destroy,
             // Agent ⇒ daemon messages
             Msg::Resize
