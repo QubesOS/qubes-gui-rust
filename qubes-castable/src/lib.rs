@@ -40,6 +40,7 @@ pub unsafe trait Castable:
     /// Casts a [`Castable`] type to a `&[u8]`, without any copies.
     ///
     /// This is safe because [`Castable`] is unsafe to implement.
+    #[inline]
     fn as_bytes(&self) -> &[u8] {
         // SAFETY: By the contract of `Castable`, `obj` has no padding bytes.
         unsafe {
@@ -55,6 +56,7 @@ pub unsafe trait Castable:
     ///
     /// This is safe because [`Castable`] objects have no padding bytes, and any
     /// bit pattern is valid for them.
+    #[inline]
     fn as_mut_bytes(&mut self) -> &mut [u8] {
         unsafe {
             let size = core::mem::size_of_val(self);
@@ -99,6 +101,7 @@ pub unsafe trait Castable:
     /// # use core::convert::TryInto;
     /// drop(<Option<NonZeroU8>>::from_bytes(&[]));
     /// ```
+    #[inline]
     fn from_bytes(buf: &[u8]) -> Self
     where
         Self: Sized + Castable,
@@ -130,6 +133,7 @@ pub unsafe trait Castable:
     ///
     /// This is safe because [`Castable`] objects have no padding bytes, and any
     /// bit pattern is valid for them.
+    #[inline]
     fn zeroed() -> Self
     where
         Self: Sized + Castable,
