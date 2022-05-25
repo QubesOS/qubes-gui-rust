@@ -9,6 +9,8 @@ pub extern crate core;
 
 /// A trait for types that can be casted to and from a raw byte slice.
 ///
+/// All [`Castable`] types are `Copy`, and thus do *not* implement `Drop`.
+///
 /// # Safety
 ///
 /// This trait MUST NOT be implemented on any type that contains padding, or
