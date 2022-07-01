@@ -1,0 +1,8 @@
+[package]
+name = "qubes-gui-agent-proto"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+qubes-gui = { path = "../qubes-gui" }
+qubes-castable = { path = "../qubes-castable" }

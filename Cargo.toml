@@ -1,7 +1,12 @@
 [workspace]
 members = [
   "qubes-gui-client",
-  "qubes-gui-server",
   "qubes-gui",
   "qubes-castable",
+  "qubes-gui-gntalloc",
+  "qubes-demo-agent",
+  "qubes-gui-agent",
+  "qubes-gui-agent-proto",
+  "vchan",
+  "vchan-sys",
 ]
