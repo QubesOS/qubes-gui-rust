@@ -6,6 +6,7 @@
 
 #[doc(hidden)]
 pub extern crate core;
+use core::mem::size_of;
 
 /// A trait for types that can be casted to and from a raw byte slice.
 ///
@@ -33,7 +34,7 @@ pub extern crate core;
 /// assert_eq!(Castable::as_bytes(&[(0x0F0Fu16,); 2]), &[0xF, 0xF, 0xF, 0xF]);
 /// ```
 pub unsafe trait Castable:
-    Copy + Clone + Eq + PartialEq + Ord + PartialOrd + core::fmt::Debug + core::hash::Hash
+    Copy + Clone + Eq + PartialEq + Ord + PartialOrd + core::fmt::Debug + core::hash::Hash + Sized
 {
     /// The size of the type.  MUST be equal to the size as determined by
     /// [`core::mem::size_of`].
@@ -104,18 +105,15 @@ pub unsafe trait Castable:
     /// drop(<Option<NonZeroU8>>::from_bytes(&[]));
     /// ```
     #[inline]
-    fn from_bytes(buf: &[u8]) -> Self
-    where
-        Self: Sized + Castable,
-    {
+    fn from_bytes(buf: &[u8]) -> Self {
         assert_eq!(
             buf.len(),
-            core::mem::size_of::<Self>(),
+            size_of::<Self>(),
             "Size mismatch: got {} bytes but expected {}",
             buf.len(),
-            core::mem::size_of::<Self>()
+            size_of::<Self>()
         );
-        if core::mem::size_of::<Self>() == 0 {
+        if size_of::<Self>() == 0 {
             // For a zero-sized type, it does not matter what value to return,
             // as there is only one.  Use `zeroed` to return something.
             Self::zeroed()
@@ -131,15 +129,55 @@ pub unsafe trait Castable:
         }
     }
 
+    /// Creates a [`Castable`] type from an `&[u8]`.
+    ///
+    /// This is safe because [`Castable`] objects have no padding bytes, and any
+    /// bit pattern is valid for them.
+    ///
+    /// # Returns
+    ///
+    /// On success, this returns the object read, along with the remainder of
+    /// the byte slice.  If the slice is too short, returns None.
+    ///
+    /// # Example
+    ///
+    /// Use it successfully:
+    ///
+    /// ```rust
+    /// # use core::num::NonZeroU8;
+    /// # use qubes_castable::Castable;
+    /// # use core::convert::TryInto;
+    /// assert_eq!(<Option<NonZeroU8>>::read_from_buf(&mut &[0][..]), Some(None));
+    /// assert_eq!(<Option<NonZeroU8>>::read_from_buf(&mut &[1u8][..]), Some(1u8.try_into().ok()));
+    /// // excess bytes at the end are okay
+    /// assert_eq!(<Option<NonZeroU8>>::read_from_buf(&mut &[1u8, 0u8][..]), Some(1u8.try_into().ok()));
+    /// ```
+    ///
+    /// Passing too few bytes gets None:
+    ///
+    /// ```rust
+    /// # use core::num::NonZeroU8;
+    /// # use qubes_castable::Castable;
+    /// # use core::convert::TryInto;
+    /// assert_eq!(<Option<NonZeroU8>>::read_from_buf(&mut &[][..]), None);
+    /// ```
+    #[inline]
+    fn read_from_buf(buf: &mut &[u8]) -> Option<Self> {
+        let buf_v = *buf;
+        if buf_v.len() < size_of::<Self>() {
+            return None;
+        }
+        let res = Self::from_bytes(&buf_v[..size_of::<Self>()]);
+        *buf = &buf_v[size_of::<Self>()..];
+        Some(res)
+    }
+
     /// Creates a zeroed instance of any [`Castable`] type
     ///
     /// This is safe because [`Castable`] objects have no padding bytes, and any
     /// bit pattern is valid for them.
     #[inline]
-    fn zeroed() -> Self
-    where
-        Self: Sized + Castable,
-    {
+    fn zeroed() -> Self {
         // SAFETY:  Since `Self` is `Castable`, *any* bit pattern is valid for
         // it, so this cannot create a value with an invalid bit pattern.
         unsafe { core::mem::zeroed() }
@@ -195,7 +233,7 @@ unsafe_castable_nonzero! {
 
 // Arrays of castable types are castable
 unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
-    const SIZE: usize = core::mem::size_of::<[T; COUNT]>();
+    const SIZE: usize = size_of::<[T; COUNT]>();
 }
 
 /// Create a struct that is marked as castable, meaning that it can be converted
@@ -222,7 +260,7 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 /// };
 /// ```
 ///
-/// Flipping the order would not make this compile, as the compiler would
+/// Flipping the order would make this not compile, as the compiler would
 /// need to insert padding at the end:
 ///
 /// ```rust,compile_fail
@@ -359,8 +397,8 @@ macro_rules! castable {
         $p struct $s {
             $(
                 $(#[doc = $n])*
-                pub $name : $ty
-            ),*
+                pub $name : $ty,
+            )*
         }
         unsafe impl $crate::Castable for $s {
             const SIZE: usize = {
@@ -399,7 +437,7 @@ pub fn as_mut_bytes<T: Castable>(obj: &mut [T]) -> &mut [u8] {
         // is valid by the contract of `Castable`, so writing through the
         // returned slice will *not* place `obj` in an invalid state.  Finally,
         // the number of valid bytes in a slice is exactly size_of::<T>() * len.
-        core::slice::from_raw_parts_mut(raw_ptr as *mut u8, len * core::mem::size_of::<T>())
+        core::slice::from_raw_parts_mut(raw_ptr as *mut u8, len * size_of::<T>())
     }
 }
 
@@ -416,7 +454,7 @@ pub fn as_bytes<T: Castable>(obj: &[T]) -> &[u8] {
         // `Castable`, so writing through the returned slice will *not* place
         // `obj` in an invalid state.  Finally, the number of valid bytes in a
         // slice is exactly size_of::<T>() * len.
-        core::slice::from_raw_parts(raw_ptr as *const u8, len * core::mem::size_of::<T>())
+        core::slice::from_raw_parts(raw_ptr as *const u8, len * size_of::<T>())
     }
 }
 
