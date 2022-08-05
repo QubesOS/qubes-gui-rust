@@ -36,7 +36,7 @@ mod buffer;
 /// The entry-point to the library.
 #[derive(Debug)]
 pub struct Client {
-    vchan: buffer::RawMessageStream<Option<vchan::Vchan>>,
+    raw: buffer::RawMessageStream<Option<vchan::Vchan>>,
     present_windows: BTreeSet<NonZeroU32>,
     agent: bool,
 }
@@ -86,8 +86,8 @@ impl Client {
             }
         }
         // FIXME this is slow
-        self.vchan.write(header.as_bytes())?;
-        self.vchan.write(message)?;
+        self.raw.write(header.as_bytes())?;
+        self.raw.write(message)?;
         Ok(())
     }
 
@@ -96,20 +96,20 @@ impl Client {
     /// message type.  Otherwise, prefer [`Client::send_raw`], which at least
     /// ensures correct framing.
     pub fn send_raw_bytes(&mut self, msg: &[u8]) -> io::Result<()> {
-        self.vchan.write(msg)
+        self.raw.write(msg)
     }
 
     /// Acknowledge an event (as reported by poll(2), epoll(2), or similar).
     /// Must be called before performing any I/O.
     pub fn wait(&mut self) {
-        self.vchan.wait()
+        self.raw.wait()
     }
 
     /// If a message header is read successfully, `Poll::Ready(Ok(r))` is returned, and
     /// `r` can be used to access the message body.  If there is not enough data, `Poll::Pending`
     /// is returned.  `Poll::Ready(Err(_))` is returned if an error occurs.
     pub fn read_header<'a>(&'a mut self) -> Poll<io::Result<(qubes_gui::Header, &'a [u8])>> {
-        match self.vchan.read_header() {
+        match self.raw.read_header() {
             Ok(None) => Poll::Pending,
             Ok(Some((header, buffer))) => Poll::Ready(Ok((header, buffer))),
             Err(e) => Poll::Ready(Err(e)),
@@ -118,19 +118,18 @@ impl Client {
 
     /// Creates an daemon instance
     pub fn daemon(domain: u16, xconf: qubes_gui::XConf) -> io::Result<Self> {
-        let vchan = buffer::RawMessageStream::daemon(domain, xconf)?;
         Ok(Self {
-            vchan,
+            raw: buffer::RawMessageStream::daemon(domain, xconf)?,
             present_windows: Default::default(),
             agent: false,
         })
     }
 
-    /// Creates a agent instance
+    /// Creates an agent instance
     pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
-        let (vchan, conf) = buffer::RawMessageStream::agent(domain)?;
+        let (raw, conf) = buffer::RawMessageStream::agent(domain)?;
         let s = Self {
-            vchan,
+            raw,
             present_windows: Default::default(),
             agent: true,
         };
@@ -140,22 +139,22 @@ impl Client {
     /// Try to reconnect.  If this fails, the agent is no longer usable; future
     /// operations may panic.
     pub fn reconnect(&mut self) -> io::Result<()> {
-        self.vchan.reconnect()
+        self.raw.reconnect()
     }
 
     /// Gets and clears the “did_reconnect” flag
     pub fn reconnected(&mut self) -> bool {
-        self.vchan.reconnected()
+        self.raw.reconnected()
     }
 
     /// Returns true if a reconnection is needed.
     pub fn needs_reconnect(&self) -> bool {
-        self.vchan.needs_reconnect()
+        self.raw.needs_reconnect()
     }
 }
 
 impl std::os::unix::io::AsRawFd for Client {
     fn as_raw_fd(&self) -> std::os::raw::c_int {
-        self.vchan.as_raw_fd()
+        self.raw.as_raw_fd()
     }
 }

@@ -28,6 +28,10 @@ use std::io::{self, Error, ErrorKind, Read};
 use std::mem::size_of;
 use std::ops::Range;
 
+pub const PROTOCOL_VERSION_MAJOR: u32 = 1;
+pub const PROTOCOL_VERSION_MINOR: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = PROTOCOL_VERSION_MAJOR << 16 | PROTOCOL_VERSION_MINOR;
+
 #[derive(Debug)]
 enum ReadState {
     Connecting,
@@ -309,7 +313,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
             domid: domain,
             xconf: Default::default(),
         };
-        res.write(((1u32 << 16) | 3u32).as_bytes())?;
+        res.write(PROTOCOL_VERSION.as_bytes())?;
         res.flush_pending_writes()?;
         res.vchan
             .as_mut()
