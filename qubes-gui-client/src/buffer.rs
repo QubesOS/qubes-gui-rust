@@ -209,17 +209,20 @@ impl<T: VchanMock> RawMessageStream<T> {
                 }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
                     let mut header = <Header as Default>::default();
-                    if self.vchan.recv(header.as_mut_bytes()).map_err(|e| {
-                        self.state = ReadState::Error;
-                        e
-                    })? != size_of::<Header>()
-                    {
-                        break Err(Error::new(
-                            ErrorKind::UnexpectedEof,
-                            "Failed to read a full message header",
-                        ));
+                    match self.vchan.recv(header.as_mut_bytes()) {
+                        Ok(n) if n == size_of::<Header>() => ready -= size_of::<Header>(),
+                        Ok(_) => {
+                            self.state = ReadState::Error;
+                            break Err(Error::new(
+                                ErrorKind::UnexpectedEof,
+                                "Failed to read a full message header",
+                            ));
+                        }
+                        Err(e) => {
+                            self.state = ReadState::Error;
+                            break Err(e);
+                        }
                     }
-                    ready -= size_of::<Header>();
                     let untrusted_len = u32_to_usize(header.untrusted_len);
                     match qubes_gui::msg_length_limits(header.ty) {
                         // See below comment regarding empty messages!
