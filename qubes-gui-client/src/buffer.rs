@@ -250,20 +250,25 @@ impl<T: VchanMock> RawMessageStream<T> {
                     }
                 }
                 ReadState::ReadingHeader | ReadState::ReadingXConf => break Ok(None),
-                ReadState::Discard(len) => {
+                ReadState::Discard(untrusted_len) => {
                     if ready == 0 {
-                        break Ok(None);
+                        break Ok(None); // Nothing to do
                     }
-                    self.buffer.resize(256.min(len).max(self.buffer.len()), 0);
-                    let buf_len = self.buffer.len();
-                    let bytes_read = self.recv(0..ready.min(len.min(buf_len) as usize))?;
-                    if len == bytes_read {
-                        self.state = ReadState::ReadingHeader
-                    } else if bytes_read == 0 {
-                        break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan"));
-                    } else {
-                        assert!(len > bytes_read);
-                        self.state = ReadState::Discard(len - bytes_read)
+                    // Limit the amount of memory used for large packets,
+                    // as the length is untrusted.
+                    let min_buf_size = untrusted_len.min(256);
+                    // Only enlarge the buffer, don't shrink it.  If it happens
+                    // to be larger, use the extra space.
+                    self.buffer.resize(min_buf_size.max(self.buffer.len()), 0);
+                    match self.recv(0..ready.min(untrusted_len.min(self.buffer.len())))? {
+                        0 => break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan")),
+                        bytes_read if untrusted_len == bytes_read => {
+                            self.state = ReadState::ReadingHeader
+                        }
+                        bytes_read => {
+                            assert!(untrusted_len > bytes_read);
+                            self.state = ReadState::Discard(untrusted_len - bytes_read)
+                        }
                     }
                 }
                 ReadState::ReadingBody(header, read_so_far) => {
