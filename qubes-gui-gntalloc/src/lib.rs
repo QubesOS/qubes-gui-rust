@@ -206,6 +206,7 @@ impl Agent {
                     gref_ids: [0],
                 },
             );
+            // Initialize the last u32 if needed
             if (grefs & 1) != 0 {
                 assert_eq!(channels.capacity() * 2, grefs as usize + 5);
                 std::ptr::write((ptr as *mut u32).add(grefs as usize + 4), 0)
