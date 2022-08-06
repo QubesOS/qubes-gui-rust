@@ -634,7 +634,7 @@ pub fn msg_length_limits(ty: u32) -> Option<core::ops::RangeInclusive<usize>> {
         Msg::WindowClass => size_of::<WMClass>()..=size_of::<WMClass>(),
         Msg::WindowDump => {
             size_of::<WindowDumpHeader>()
-                ..=size_of::<WindowDumpHeader>() + 4 * MAX_GRANT_REFS_COUNT as usize
+                ..=size_of::<WindowDumpHeader>() + size_of::<u32>() * MAX_GRANT_REFS_COUNT as usize
         }
         Msg::Cursor => size_of::<Cursor>()..=size_of::<Cursor>(),
         Msg::Execute | Msg::Resize => return None,
