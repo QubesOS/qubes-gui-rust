@@ -173,6 +173,9 @@ struct ioctl_gntalloc_alloc_gref {
     gref_ids: [u32; 1],
 }
 
+// Indicates that a mapping should be writable
+const GNTALLOC_FLAG_WRITABLE: u16 = 1;
+
 #[repr(C)]
 #[allow(nonstandard_style)]
 struct ioctl_gntalloc_dealloc_gref {
@@ -192,10 +195,17 @@ impl Agent {
         );
         let mut channels: Vec<u64> = Vec::with_capacity((grefs as usize + 5) / 2);
         unsafe {
-            let ptr = channels.as_mut_ptr() as *mut u8;
-            std::ptr::write(ptr as *mut u16, self.peer);
-            std::ptr::write((ptr as *mut u16).add(1), 1);
-            std::ptr::write((ptr as *mut u32).add(1), grefs);
+            let ptr = channels.as_mut_ptr() as *mut ioctl_gntalloc_alloc_gref;
+            std::ptr::write(
+                ptr,
+                ioctl_gntalloc_alloc_gref {
+                    domid: self.peer,
+                    flags: GNTALLOC_FLAG_WRITABLE,
+                    count: grefs,
+                    index: 0,
+                    gref_ids: [0],
+                },
+            );
             if (grefs & 1) != 0 {
                 assert_eq!(channels.capacity() * 2, grefs as usize + 5);
                 std::ptr::write((ptr as *mut u32).add(grefs as usize + 4), 0)
@@ -211,7 +221,7 @@ impl Agent {
                 assert_eq!(res, -1, "invalid return value from ioctl()");
                 return Err(io::Error::last_os_error());
             }
-            let offset = std::ptr::read((ptr as *const u64).offset(1));
+            let offset = (*ptr).index;
             let ptr = libc::mmap(
                 std::ptr::null_mut(),
                 dimensions.buffer_size(),
