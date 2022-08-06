@@ -81,17 +81,13 @@ mod dimensions {
     }
 }
 
-fn cast_u32(s: u32) -> usize {
-    s as _
-}
-
 impl Buffer {
     /// Obtains a slice containing the exported grant references
     pub fn grants(&self) -> &[u32] {
         unsafe {
             std::slice::from_raw_parts(
                 (self.inner.as_ptr() as *const u32).add(4),
-                cast_u32(self.dimensions.grefs()),
+                self.dimensions.grefs() as _,
             )
         }
     }
@@ -137,9 +133,7 @@ impl Buffer {
         let total_length = self.dimensions.grefs() * 4
             + (std::mem::size_of::<qubes_gui::WindowDumpHeader>() as u32);
         assert!(self.inner.capacity() * std::mem::size_of::<u64>() >= total_length as _);
-        unsafe {
-            std::slice::from_raw_parts(self.inner.as_ptr() as *const u8, cast_u32(total_length))
-        }
+        unsafe { std::slice::from_raw_parts(self.inner.as_ptr() as *const u8, total_length as _) }
     }
 }
 
@@ -196,17 +190,17 @@ impl Agent {
             grefs <= qubes_gui::MAX_GRANT_REFS_COUNT,
             "excessive width or height detected above"
         );
-        let mut channels: Vec<u64> = Vec::with_capacity((cast_u32(grefs) + 5) / 2);
+        let mut channels: Vec<u64> = Vec::with_capacity((grefs as usize + 5) / 2);
         unsafe {
             let ptr = channels.as_mut_ptr() as *mut u8;
             std::ptr::write(ptr as *mut u16, self.peer);
             std::ptr::write((ptr as *mut u16).add(1), 1);
             std::ptr::write((ptr as *mut u32).add(1), grefs);
             if (grefs & 1) != 0 {
-                assert_eq!(channels.capacity() * 2, cast_u32(grefs) + 5);
-                std::ptr::write((ptr as *mut u32).add(cast_u32(grefs) + 4), 0)
+                assert_eq!(channels.capacity() * 2, grefs as usize + 5);
+                std::ptr::write((ptr as *mut u32).add(grefs as usize + 4), 0)
             } else {
-                assert_eq!(channels.capacity() * 2, cast_u32(grefs) + 4);
+                assert_eq!(channels.capacity() * 2, grefs as usize + 4);
             }
             let res = libc::ioctl(
                 self.alloc.as_raw_fd(),
