@@ -225,7 +225,8 @@ impl<T: VchanMock> RawMessageStream<T> {
                     }
                     let untrusted_len = u32_to_usize(header.untrusted_len);
                     match qubes_gui::msg_length_limits(header.ty) {
-                        // See below comment regarding empty messages!
+                        // Discard unknown messages, but see below comment
+                        // regarding empty ones.
                         None if untrusted_len == 0 => continue,
                         None => self.state = ReadState::Discard(untrusted_len),
                         Some(max_len) if max_len.contains(&untrusted_len) => {
