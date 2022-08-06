@@ -222,6 +222,7 @@ impl Agent {
                 assert_eq!(res, -1, "invalid return value from ioctl()");
                 return Err(io::Error::last_os_error());
             }
+            channels.set_len(channels.capacity());
             let offset = (*ptr).index;
             let ptr = libc::mmap(
                 std::ptr::null_mut(),
