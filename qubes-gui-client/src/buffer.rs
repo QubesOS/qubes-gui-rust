@@ -293,7 +293,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     }
 
     pub fn needs_reconnect(&self) -> bool {
-        matches!(self.vchan.status(), vchan::Status::Disconnected)
+        self.vchan.status() == vchan::Status::Disconnected
     }
 }
 
