@@ -229,7 +229,7 @@ impl<T: VchanMock> RawMessageStream<T> {
                         // regarding empty ones.
                         None if untrusted_len == 0 => continue,
                         None => self.state = ReadState::Discard(untrusted_len),
-                        Some(max_len) if max_len.contains(&untrusted_len) => {
+                        Some(allowed_lengths) if allowed_lengths.contains(&untrusted_len) => {
                             // length was sanitized above
                             self.buffer.resize(untrusted_len, 0);
                             // If the message has an empty body, **do not wait for a body byte to
