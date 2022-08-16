@@ -8,6 +8,14 @@
 pub extern crate core;
 use core::mem::size_of;
 
+/// If the provided expression is false, fail the build with a type error.
+#[macro_export]
+macro_rules! static_assert {
+    ($e: expr) => {{
+        let [] = [0; if $e { 0 } else { 1 }];
+    }};
+}
+
 /// A trait for types that can be casted to and from a raw byte slice.
 ///
 /// All [`Castable`] types are `Copy`, and thus do *not* implement `Drop`.
@@ -404,11 +412,13 @@ macro_rules! castable {
             const SIZE: usize = {
                 const SIZE: usize = ($(
                     ({
-                        let _: [u8; $crate::core::mem::size_of::<$ty>()] = [0u8; <$ty as $crate::Castable>::SIZE];
+                        $crate::static_assert!(
+                            $crate::core::mem::size_of::<$ty>() == <$ty as $crate::Castable>::SIZE
+                        );
                         $crate::core::mem::size_of::<$ty>()
                     }) +
                 )* 0);
-                let _: [u8; $crate::core::mem::size_of::<$s>()] = [0u8; SIZE];
+                $crate::static_assert!($crate::core::mem::size_of::<$s>() == SIZE);
                 SIZE
             };
         }
