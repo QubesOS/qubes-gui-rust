@@ -191,7 +191,7 @@ impl<'a> DaemonToAgentEvent<'a> {
             | Msg::WindowClass
             | Msg::WindowDump
             | Msg::Cursor => return Ok(None),
-            // _ => return Ok(None),
+            _ => return Ok(None),
         };
         Ok(Some((window, res)))
     }

@@ -211,6 +211,7 @@ macro_rules! enum_const {
 
 enum_const! {
     #[repr(u32)]
+    #[non_exhaustive]
     /// Message types
     pub enum Msg {
         /// Daemon ⇒ agent: A key has been pressed
