@@ -157,6 +157,15 @@ pub const LISTENING_PORT: i16 = 6000;
 /// Type of grant refs dump messages
 pub const WINDOW_DUMP_TYPE_GRANT_REFS: u32 = 0;
 
+/// The major version of the protocol
+pub const PROTOCOL_VERSION_MAJOR: u32 = 1;
+
+/// The minor version of the protocol.
+pub const PROTOCOL_VERSION_MINOR: u32 = 4;
+
+/// The overall protocol version, as used on the wire.
+pub const PROTOCOL_VERSION: u32 = PROTOCOL_VERSION_MAJOR << 16 | PROTOCOL_VERSION_MINOR;
+
 // This allows pattern-matching against constant values without a huge amount of
 // boilerplate code.
 macro_rules! enum_const {
