@@ -58,6 +58,7 @@ name = "qubes-gui-gntalloc"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "qubes-castable",
  "qubes-gui",
 ]
 

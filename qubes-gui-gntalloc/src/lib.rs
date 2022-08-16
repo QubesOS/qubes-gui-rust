@@ -22,6 +22,7 @@ pub struct Buffer {
 }
 
 mod dimensions {
+    use qubes_castable::static_assert;
     use std::io;
     use std::mem::size_of;
     pub(super) struct WindowDimensions {
@@ -31,9 +32,14 @@ mod dimensions {
 
     impl WindowDimensions {
         pub fn new(width: u32, height: u32) -> io::Result<Self> {
-            let _: [u8; 0] = [0u8; (size_of::<u32>() > size_of::<usize>()) as usize
-                + ((u32::MAX / 4) / qubes_gui::MAX_WINDOW_WIDTH <= qubes_gui::MAX_WINDOW_HEIGHT)
-                    as usize];
+            static_assert!(size_of::<u32>() < size_of::<usize>());
+            static_assert!(
+                (u32::MAX / 4) / qubes_gui::MAX_WINDOW_WIDTH > qubes_gui::MAX_WINDOW_HEIGHT
+            );
+            static_assert!(
+                qubes_gui::MAX_WINDOW_WIDTH * qubes_gui::MAX_WINDOW_HEIGHT * 4
+                    < u32::MAX - qubes_gui::XC_PAGE_SIZE
+            );
             if width > qubes_gui::MAX_WINDOW_WIDTH || height > qubes_gui::MAX_WINDOW_HEIGHT {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
