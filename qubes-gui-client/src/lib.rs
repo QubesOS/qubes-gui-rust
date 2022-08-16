@@ -117,7 +117,7 @@ impl Client {
     }
 
     /// Creates a daemon instance
-    pub fn daemon(domain: u16, xconf: qubes_gui::XConf) -> io::Result<Self> {
+    pub fn daemon(domain: u16, xconf: qubes_gui::XConfVersion) -> io::Result<Self> {
         Ok(Self {
             raw: buffer::RawMessageStream::daemon(domain, xconf)?,
             present_windows: Default::default(),
@@ -126,7 +126,7 @@ impl Client {
     }
 
     /// Creates an agent instance
-    pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
+    pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConfVersion)> {
         let (raw, conf) = buffer::RawMessageStream::agent(domain)?;
         let s = Self {
             raw,

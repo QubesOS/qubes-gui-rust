@@ -364,9 +364,11 @@ qubes_castable::castable! {
         size: WindowSize
     }
 
-    /// Daemon ⇒ agent: Root window configuration; sent only at startup, without
-    /// a header.
-    pub struct XConf {
+    /// Daemon ⇒ agent: Version and root window configuration; sent only at
+    /// startup, without a header.
+    pub struct XConfVersion {
+        /// Negotiated protocol version
+        version: u32,
         /// Root window size
         size: WindowSize,
         /// X11 Depth of the root window

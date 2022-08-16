@@ -86,7 +86,7 @@ pub(crate) struct RawMessageStream<T: VchanMock> {
     state: ReadState,
     buffer: Vec<u8>,
     did_reconnect: bool,
-    xconf: qubes_gui::XConf,
+    xconf: qubes_gui::XConfVersion,
     domid: u16,
 }
 
@@ -170,7 +170,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     /// returns `Ok(Some(msg))` if a complete message has been read, or `Err`
     /// if something went wrong.
     pub fn read_header(&mut self) -> io::Result<Option<(Header, &[u8])>> {
-        const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConf>();
+        const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConfVersion>();
         if let Err(e) = self.flush_pending_writes() {
             self.state = ReadState::Error;
             return Err(e);
@@ -298,7 +298,7 @@ impl<T: VchanMock> RawMessageStream<T> {
 }
 
 impl RawMessageStream<Option<vchan::Vchan>> {
-    pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConf)> {
+    pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConfVersion)> {
         let vchan = vchan::Vchan::server(domain, qubes_gui::LISTENING_PORT.into(), 4096, 4096)?;
         loop {
             match vchan.status() {
@@ -332,7 +332,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
         Ok((res, xconf))
     }
 
-    pub fn daemon(domain: u16, xconf: qubes_gui::XConf) -> io::Result<Self> {
+    pub fn daemon(domain: u16, xconf: qubes_gui::XConfVersion) -> io::Result<Self> {
         Ok(Self {
             vchan: Some(vchan::Vchan::client(
                 domain,
