@@ -112,7 +112,9 @@
 
 #![forbid(missing_docs)]
 #![no_std]
+use core::convert::TryFrom;
 use core::num::NonZeroU32;
+use core::result::Result;
 
 /// Arbitrary maximum size of a clipboard message
 pub const MAX_CLIPBOARD_SIZE: u32 = 65000;
@@ -159,7 +161,7 @@ pub const WINDOW_DUMP_TYPE_GRANT_REFS: u32 = 0;
 // boilerplate code.
 macro_rules! enum_const {
     (
-        #[repr($t: ident)]
+        #[repr($t: ty)]
         $(#[$i: meta])*
         $p: vis enum $n: ident {
             $(
@@ -170,7 +172,6 @@ macro_rules! enum_const {
     ) => {
         $(#[$i])*
         #[repr($t)]
-        // #[non_exhaustive]
         $p enum $n {
             $(
                 $(#[$j])*
@@ -178,18 +179,21 @@ macro_rules! enum_const {
             )*
         }
 
-        impl ::core::convert::TryFrom::<$t> for $n {
+        $(
+            $(#[$j])*
+            $p const $const_name: $t = $n::$variant_name as $t;
+        )*
+
+        impl $crate::TryFrom::<$t> for $n {
             type Error = $t;
             #[allow(non_upper_case_globals)]
-            fn try_from(value: $t) -> ::core::result::Result<Self, $t> {
-                $(
-                    const $const_name: $t = $n::$variant_name as $t;
-                )*
+            #[inline]
+            fn try_from(value: $t) -> $crate::Result<Self, $t> {
                 match value {
                     $(
-                        $const_name => return ::core::result::Result::Ok($n::$variant_name),
+                        $const_name => return $crate::Result::Ok($n::$variant_name),
                     )*
-                    other => ::core::result::Result::Err(other),
+                    other => $crate::Result::Err(other),
                 }
             }
         }
@@ -609,7 +613,7 @@ impl_message! {
 /// Gets the length limits of a message of a given type, or `None` for an
 /// unknown message (for which there are no limits).
 pub fn msg_length_limits(ty: u32) -> Option<core::ops::RangeInclusive<usize>> {
-    use core::{convert::TryFrom, mem::size_of};
+    use core::mem::size_of;
     Some(match Msg::try_from(ty).ok()? {
         Msg::ClipboardData => 0..=MAX_CLIPBOARD_SIZE as _,
         Msg::Button => size_of::<Button>()..=size_of::<Button>(),
