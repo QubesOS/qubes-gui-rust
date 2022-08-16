@@ -6,13 +6,13 @@ use std::rc::{Rc, Weak};
 
 type DomID = u16;
 
-/// A GUI agent instance
-pub struct Agent {
+/// A GUI agent buffer allocator
+pub struct Allocator {
     alloc: Rc<std::fs::File>,
     peer: DomID,
 }
 
-/// A window sent to the GUI daemon
+/// A buffer sent to the GUI daemon
 pub struct Buffer {
     inner: Vec<u64>,
     alloc: Weak<std::fs::File>,
@@ -189,7 +189,7 @@ struct ioctl_gntalloc_dealloc_gref {
     count: u32,
 }
 
-impl Agent {
+impl Allocator {
     /// Allocate a buffer to share with the GUI daemon.
     pub fn alloc_buffer(&mut self, width: u32, height: u32) -> io::Result<Buffer> {
         let dimensions = dimensions::WindowDimensions::new(width, height)?;
@@ -270,14 +270,14 @@ impl Agent {
 }
 
 /// Creates a GUI agent
-pub fn new(peer: DomID) -> io::Result<Agent> {
+pub fn new(peer: DomID) -> io::Result<Allocator> {
     let alloc = Rc::new(
         std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .open("/dev/xen/gntalloc")?,
     );
-    Ok(Agent { alloc, peer })
+    Ok(Allocator { alloc, peer })
 }
 
 const IOCTL_GNTALLOC_ALLOC_GREF: std::os::raw::c_ulong = 0x184705;
