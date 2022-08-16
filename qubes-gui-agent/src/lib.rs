@@ -44,11 +44,6 @@
 //!   encode messages manually.  This leads to much cleaner code and prevents
 //!   entire classes of bugs.  In particular, sending a message on an invalid
 //!   window is prevented by the borrow checker.
-//! - The common task of managing trees of windows is solved by the
-//!   [`WindowTree`] abstraction.  This allows detaching a window from its
-//!   parent, even though the Qubes OS GUI Protocol does not itself support
-//!   this.  To work around this limitation, child windows are destroyed
-//!   recursively, and then recreated.
 //! - A [`Buffer`] abstraction provides for managed buffers.  Double-buffering
 //!   is supported natively, making graphical glitches far, *far* less likely.
 //!   Future improvements to the GUI protocol will make glitches impossible.
