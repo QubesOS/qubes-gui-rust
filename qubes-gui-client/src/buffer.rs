@@ -76,13 +76,19 @@ impl VchanMock for Option<vchan::Vchan> {
 
 #[derive(Debug)]
 pub(crate) struct RawMessageStream<T: VchanMock> {
+    /// Vchan
     vchan: T,
-    queue: VecDeque<Vec<u8>>,
-    offset: usize,
+    /// Write buffer
+    queue: VecDeque<u8>,
+    /// State of the read state machine
     state: ReadState,
+    /// Read buffer
     buffer: Vec<u8>,
+    /// Was reconnect successful?
     did_reconnect: bool,
+    /// Configuration from the daemon
     xconf: qubes_gui::XConfVersion,
+    /// Peer domain ID
     domid: u16,
 }
 
@@ -111,21 +117,22 @@ impl<T: VchanMock> RawMessageStream<T> {
     fn flush_pending_writes(&mut self) -> io::Result<usize> {
         let mut written = 0;
         loop {
-            let front: &mut _ = match self.queue.front_mut() {
-                None => break Ok(written),
-                Some(e) => e,
+            let (front, back) = self.queue.as_slices();
+            let to_write = if front.is_empty() {
+                if back.is_empty() {
+                    break Ok(written);
+                }
+                back
+            } else {
+                front
             };
-            let to_write = &front[self.offset..];
-            if to_write.is_empty() {
-                self.queue.pop_front();
-                self.offset = 0;
-                continue;
-            }
             let written_this_time = Self::write_slice(&mut self.vchan, to_write)?;
-            written += written_this_time;
-            self.offset += written_this_time;
-            if written_this_time < to_write.len() {
+            if written_this_time == 0 {
                 break Ok(written);
+            }
+            written += written_this_time;
+            for _ in 0..written_this_time {
+                drop(self.queue.pop_front())
             }
         }
     }
@@ -133,14 +140,13 @@ impl<T: VchanMock> RawMessageStream<T> {
     pub fn write(&mut self, buf: &[u8]) -> io::Result<()> {
         self.flush_pending_writes()?;
         if !self.queue.is_empty() {
-            self.queue.push_back(buf.to_owned());
+            self.queue.extend(buf.to_owned());
             return Ok(());
         }
-        assert_eq!(self.offset, 0);
         let written = Self::write_slice(&mut self.vchan, buf)?;
         if written != buf.len() {
             assert!(written < buf.len());
-            self.queue.push_back(buf[written..].to_owned());
+            self.queue.extend(&buf[written..]);
         }
         Ok(())
     }
@@ -311,7 +317,6 @@ impl RawMessageStream<Option<vchan::Vchan>> {
         let mut res = Self {
             vchan: Some(vchan),
             queue: Default::default(),
-            offset: 0,
             state: ReadState::ReadingHeader,
             buffer: vec![],
             did_reconnect: false,
@@ -335,7 +340,6 @@ impl RawMessageStream<Option<vchan::Vchan>> {
                 qubes_gui::LISTENING_PORT.into(),
             )?),
             queue: Default::default(),
-            offset: 0,
             state: ReadState::ReadingHeader,
             buffer: vec![],
             did_reconnect: false,
@@ -352,7 +356,6 @@ impl RawMessageStream<Option<vchan::Vchan>> {
             4096,
             4096,
         )?);
-        self.offset = 0;
         self.queue.clear();
         self.buffer.clear();
         self.state = ReadState::Connecting;
@@ -412,7 +415,7 @@ mod tests {
         }
     }
     #[test]
-    fn vchan_data() {
+    fn vchan_writes() {
         let mock_vchan = MockVchan {
             read_buf: vec![],
             write_buf: vec![],
@@ -423,7 +426,6 @@ mod tests {
         let mut under_test = RawMessageStream::<MockVchan> {
             vchan: mock_vchan,
             queue: Default::default(),
-            offset: 0,
             state: ReadState::ReadingHeader,
             buffer: vec![],
             did_reconnect: false,
@@ -431,28 +433,27 @@ mod tests {
             domid: 0,
         };
         under_test.write(b"test1").unwrap();
-        assert_eq!(under_test.queue.len(), 1, "message queued");
-        assert_eq!(under_test.queue[0], b"test1");
-        assert_eq!(under_test.offset, 0, "no bytes written");
+        assert_eq!(under_test.queue.len(), 5, "message queued");
+        assert_eq!(under_test.queue.as_slices().0[0..5], *b"test1");
         assert_eq!(under_test.vchan.write_buf, b"", "no bytes written");
         under_test.vchan.buffer_space = 3;
         under_test
             .flush_pending_writes()
             .expect("drained successfully");
-        assert_eq!(under_test.queue.len(), 1);
-        assert_eq!(under_test.queue[0], b"test1");
-        assert_eq!(under_test.offset, 3);
+        assert_eq!(under_test.queue.len(), 2);
+        assert_eq!(under_test.queue.as_slices().0[0..2], *b"t1");
         assert_eq!(under_test.vchan.write_buf, b"tes");
         assert_eq!(under_test.vchan.buffer_space, 0);
         under_test.vchan.buffer_space = 4;
         under_test.write(b"\0another alpha").unwrap();
-        assert_eq!(under_test.queue.len(), 1);
+        assert_eq!(under_test.queue.len(), 12);
         assert_eq!(under_test.vchan.write_buf, b"test1\0a");
+        under_test.queue.make_contiguous();
         assert_eq!(
-            under_test.queue[0], b"nother alpha",
+            under_test.queue.as_slices().0,
+            *b"nother alpha",
             "only the minimum number of bytes stored"
         );
-        assert_eq!(under_test.offset, 0);
         under_test.vchan.buffer_space = 2;
         under_test
             .flush_pending_writes()
@@ -463,13 +464,11 @@ mod tests {
         assert_eq!(under_test.read_header().unwrap(), None, "no bytes to read");
         assert_eq!(under_test.vchan.buffer_space, 0);
         assert_eq!(under_test.vchan.write_buf, b"test1\0another al");
-        assert_eq!(under_test.queue.len(), 1);
-        assert_eq!(under_test.queue[0], b"nother alpha");
-        assert_eq!(under_test.offset, 9);
+        assert_eq!(under_test.queue.len(), 3);
+        assert_eq!(under_test.queue.as_slices().0, *b"pha");
         under_test.vchan.buffer_space = 8;
         under_test.write(b" gamma delta").expect("write works");
         assert_eq!(under_test.vchan.write_buf, b"test1\0another alpha gamm");
-        assert_eq!(under_test.offset, 0);
         under_test.write(b" gamma delta").expect("write works");
         under_test.write(b" gamma delta").expect("write works");
         under_test.vchan.buffer_space = 8;
