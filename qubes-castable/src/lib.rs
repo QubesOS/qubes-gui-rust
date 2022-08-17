@@ -427,6 +427,20 @@ macro_rules! castable {
                 <$s as $crate::Castable>::zeroed()
             }
         }
+        impl $crate::core::convert::From<[u8; <$s as $crate::Castable>::SIZE]> for $s {
+            fn from(s: [u8; <$s as $crate::Castable>::SIZE]) -> Self {
+                unsafe {
+                    $crate::core::mem::transmute::<[u8; <$s as $crate::Castable>::SIZE], Self>(s)
+                }
+            }
+        }
+        impl $crate::core::convert::From<$s> for [u8; <$s as $crate::Castable>::SIZE] {
+            fn from(s: $s) -> Self {
+                unsafe {
+                    $crate::core::mem::transmute::<$s, Self>(s)
+                }
+            }
+        }
         )+
     }
 }
