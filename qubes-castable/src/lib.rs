@@ -240,6 +240,7 @@ unsafe_castable_nonzero! {
 }
 
 // Arrays of castable types are castable
+// SAFETY: an array is layed out contiguously in memory.
 unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
     const SIZE: usize = size_of::<[T; COUNT]>();
 }
