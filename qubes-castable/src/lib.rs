@@ -445,6 +445,66 @@ macro_rules! castable {
     }
 }
 
+/// An identity function on [`Castable`] types.
+///
+/// This function just returns its argument, but it is restricted to [`Castable`]
+/// types.  Its main use is in macros.
+#[inline(always)]
+pub fn id<T: Castable>(arg: T) -> T {
+    arg
+}
+
+/// Cast any [`Castable`] type to any other [`Castable`] type of the same size.
+///
+/// This is implemented in terms of [`core::mem::transmute`].
+///
+/// # Examples
+///
+/// A valid use:
+///
+/// ```rust
+/// # use qubes_castable::cast;
+/// let s: i32 = cast!(1u32);
+/// ```
+///
+/// Will not compile because the sizes do not match:
+///
+/// ```rust,compile_fail
+/// # use qubes_castable::cast;
+/// let s: i64 = cast!(1u32);
+/// ```
+///
+/// Will not compile because the source type is not [`Castable`]:
+///
+/// ```rust,compile_fail
+/// # use qubes_castable::cast;
+/// #[repr(transparent)]
+/// struct NotCastable(u32);
+/// let s: i32 = cast!(NotCastable(1));
+/// ```
+///
+/// Will not compile because the destination type is not [`Castable`]:
+///
+/// ```rust,compile_fail
+/// # use qubes_castable::cast;
+/// #[repr(transparent)]
+/// struct NotCastable(u32);
+/// let s: NotCastable = cast!(1u32);
+/// ```
+#[macro_export]
+macro_rules! cast {
+    ($a: expr) => {
+        // SAFETY: All bit patterns are valid for castable types and they
+        // have no padding.  Therefore, it is safe to reinterpret the bits
+        // of a castable type as any other castable type of the same size.
+        // If the source type is not castable, the inner call to id will
+        // cause a type error.  If the outer type is not castable, the
+        // outer call to id will cause a type error.  If the sizes do not
+        // match, the call to transmute will be rejected by the compiler.
+        unsafe { $crate::id($crate::core::mem::transmute($crate::id($a))) }
+    };
+}
+
 /// Casts a mutable reference to a slice of [`Castable`] types to a `&mut [u8]`,
 /// without any copies.
 ///
