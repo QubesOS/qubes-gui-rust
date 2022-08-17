@@ -511,6 +511,7 @@ macro_rules! cast {
 ///
 /// This is safe because [`Castable`] objects have no padding bytes, and any bit
 /// pattern is valid for them.
+#[inline]
 pub fn as_mut_bytes<T: Castable>(obj: &mut [T]) -> &mut [u8] {
     unsafe {
         // Obtain a mutable pointer to `obj` and the length
@@ -531,6 +532,7 @@ pub fn as_mut_bytes<T: Castable>(obj: &mut [T]) -> &mut [u8] {
 ///
 /// This is safe because [`Castable`] objects have no padding bytes, and any bit
 /// pattern is valid for them.
+#[inline]
 pub fn as_bytes<T: Castable>(obj: &[T]) -> &[u8] {
     unsafe {
         // Obtain a pointer to `obj` and the length
