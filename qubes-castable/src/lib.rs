@@ -42,7 +42,16 @@ macro_rules! static_assert {
 /// assert_eq!(Castable::as_bytes(&[(0x0F0Fu16,); 2]), &[0xF, 0xF, 0xF, 0xF]);
 /// ```
 pub unsafe trait Castable:
-    Copy + Clone + Eq + PartialEq + Ord + PartialOrd + core::fmt::Debug + core::hash::Hash + Sized
+    Copy
+    + Clone
+    + Eq
+    + PartialEq
+    + Ord
+    + PartialOrd
+    + core::fmt::Debug
+    + core::hash::Hash
+    + Sized
+    + 'static
 {
     /// Casts a [`Castable`] type to a `&[u8]`, without any copies.
     ///
