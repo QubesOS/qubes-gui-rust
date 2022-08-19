@@ -196,6 +196,7 @@ pub unsafe trait Castable:
 // FFI-safe.  It is not exported and is only used internally to this module.
 macro_rules! unsafe_impl_castable {
     ($i: ty) => {
+        // SAFETY: the safe usage of this is part of its API contract.
         unsafe impl Castable for $i {
             const SIZE: usize = {
                 #[forbid(improper_ctypes)]
@@ -209,12 +210,16 @@ macro_rules! unsafe_impl_castable {
     };
 }
 
+// SAFETY: () is a ZST
 unsafe_impl_castable!(());
 
 // Unsafely implement Castable for Option<NonZero*>, but check layouts first
 macro_rules! unsafe_castable_nonzero {
     ($(($i: ident, $j: ty),)*) => {$(
+        // SAFETY: integers santisfy the Castable requirements
         unsafe_impl_castable!($j);
+        // SAFETY: Option<NonZero*> satisfies the Castable requirements due to the null pointer
+        // optimization.
         unsafe impl Castable for Option<$crate::core::num::$i> {
             const SIZE: usize = {
                 #[forbid(improper_ctypes)]
@@ -409,6 +414,16 @@ macro_rules! castable {
                 pub $name : $ty,
             )*
         }
+        // SAFETY:
+        //
+        // - The first static_assert! checks that the size of each member is
+        //   equal to the correspoding SIZE constant.  It also checks that
+        //   each member implements Castable.
+        // - The second static_assert! checks that the size of the struct is
+        //   equal to the sum of the sizes of its members.  This means that
+        //   the struct cannot have any padding.
+        //
+        // Together, these checks imply that the Castable contract is met.
         unsafe impl $crate::Castable for $s {
             const SIZE: usize = {
                 const SIZE: usize = ($(
