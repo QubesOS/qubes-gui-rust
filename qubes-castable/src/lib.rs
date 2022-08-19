@@ -44,10 +44,6 @@ macro_rules! static_assert {
 pub unsafe trait Castable:
     Copy + Clone + Eq + PartialEq + Ord + PartialOrd + core::fmt::Debug + core::hash::Hash + Sized
 {
-    /// The size of the type.  MUST be equal to the size as determined by
-    /// [`core::mem::size_of`].
-    const SIZE: usize;
-
     /// Casts a [`Castable`] type to a `&[u8]`, without any copies.
     ///
     /// This is safe because [`Castable`] is unsafe to implement.
@@ -192,45 +188,36 @@ pub unsafe trait Castable:
     }
 }
 
-// This unsafely implements Castable for a type, checking only that it is
-// FFI-safe.  It is not exported and is only used internally to this module.
-macro_rules! unsafe_impl_castable {
-    ($i: ty) => {
-        // SAFETY: the safe usage of this is part of its API contract.
-        unsafe impl Castable for $i {
-            const SIZE: usize = {
-                #[forbid(improper_ctypes)]
-                #[forbid(improper_ctypes_definitions)]
-                extern "C" fn _dummy() -> $i {
-                    unreachable!()
-                }
-                $crate::core::mem::size_of::<$i>()
-            };
-        }
-    };
-}
-
 // SAFETY: () is a ZST
-unsafe_impl_castable!(());
+unsafe impl Castable for () {}
 
 // Unsafely implement Castable for Option<NonZero*>, but check layouts first
 macro_rules! unsafe_castable_nonzero {
-    ($(($i: ident, $j: ty),)*) => {$(
-        // SAFETY: integers santisfy the Castable requirements
-        unsafe_impl_castable!($j);
-        // SAFETY: Option<NonZero*> satisfies the Castable requirements due to the null pointer
-        // optimization.
-        unsafe impl Castable for Option<$crate::core::num::$i> {
-            const SIZE: usize = {
+    ($(($i: ident, $j: ident),)*) => {
+        #[allow(dead_code)]
+        const FAKE: () = {
+            $(
+                $crate::static_assert!(
+                    $crate::core::mem::size_of::<Option<$crate::core::num::$i>>() ==
+                    $crate::core::mem::size_of::<$j>());
                 #[forbid(improper_ctypes)]
                 #[forbid(improper_ctypes_definitions)]
-                extern "C" fn _dummy() -> Option<$crate::core::num::$i> { unreachable!() }
-                let _: [u8; $crate::core::mem::size_of::<Option<$crate::core::num::$i>>()] =
-                    [0u8; $crate::core::mem::size_of::<$j>()];
-                $crate::core::mem::size_of::<$j>()
-            };
-        }
-    )*}
+                #[allow(nonstandard_style)]
+                extern "C" fn $i() -> Option<$crate::core::num::$i> { unreachable!() }
+                #[forbid(improper_ctypes)]
+                #[forbid(improper_ctypes_definitions)]
+                #[allow(nonstandard_style)]
+                extern "C" fn $j() -> $j { unreachable!() }
+            )*
+        };
+        $(
+            // SAFETY: the safe usage of this is part of its API contract.
+            unsafe impl Castable for $j {}
+            // SAFETY: Option<NonZero*> satisfies the Castable requirements due to the null pointer
+            // optimization.
+            unsafe impl Castable for Option<$crate::core::num::$i> {}
+        )*
+    }
 }
 
 unsafe_castable_nonzero! {
@@ -246,9 +233,7 @@ unsafe_castable_nonzero! {
 
 // Arrays of castable types are castable
 // SAFETY: an array is layed out contiguously in memory.
-unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
-    const SIZE: usize = size_of::<[T; COUNT]>();
-}
+unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {}
 
 /// Create a struct that is marked as castable, meaning that it can be converted
 /// to and from a byte slice without any run-time overhead.  This macro:
@@ -274,7 +259,7 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 /// };
 /// ```
 ///
-/// Flipping the order would make this not compile, as the compiler would
+/// Flipping the order would still not make this compile, as the compiler would
 /// need to insert padding at the end:
 ///
 /// ```rust,compile_fail
@@ -411,44 +396,40 @@ macro_rules! castable {
         $p struct $s {
             $(
                 $(#[doc = $n])*
-                pub $name : $ty,
-            )*
+                pub $name : $ty
+            ),*
         }
         // SAFETY:
         //
-        // - The first static_assert! checks that the size of each member is
-        //   equal to the correspoding SIZE constant.  It also checks that
-        //   each member implements Castable.
-        // - The second static_assert! checks that the size of the struct is
-        //   equal to the sum of the sizes of its members.  This means that
-        //   the struct cannot have any padding.
+        // The static_assert! in the Default::default() implementation checks
+        // that the size of the struct is equal to the sum of the sizes of its
+        // members.  This means that the struct cannot have any padding.  It
+        // also checks that each field implements Castable.  Since the struct is
+        // comprised entirely of its individual fields, and since the individual
+        // fields are Castable, the result struct is Castable too.
         //
         // Together, these checks imply that the Castable contract is met.
-        unsafe impl $crate::Castable for $s {
-            const SIZE: usize = {
-                const SIZE: usize = ($(
-                    ({
-                        $crate::static_assert!(
-                            $crate::core::mem::size_of::<$ty>() == <$ty as $crate::Castable>::SIZE
-                        );
-                        $crate::core::mem::size_of::<$ty>()
-                    }) +
-                )* 0);
-                $crate::static_assert!($crate::core::mem::size_of::<$s>() == SIZE);
-                SIZE
-            };
-        }
+        unsafe impl $crate::Castable for $s {}
         impl $crate::core::default::Default for $s {
             fn default() -> Self {
+                const fn size_of_castable<T: $crate::Castable>() -> $crate::core::primitive::usize {
+                    $crate::core::mem::size_of::<T>()
+                }
+                const SIZE: $crate::core::primitive::usize = ($(
+                    (
+                        size_of_castable::<$ty>()
+                    ) +
+                )* 0);
+                $crate::static_assert!($crate::core::mem::size_of::<$s>() == SIZE);
                 <$s as $crate::Castable>::zeroed()
             }
         }
-        impl $crate::core::convert::From<[u8; <$s as $crate::Castable>::SIZE]> for $s {
-            fn from(s: [u8; <$s as $crate::Castable>::SIZE]) -> Self {
+        impl $crate::core::convert::From<[u8; $crate::core::mem::size_of::<$s>()]> for $s {
+            fn from(s: [u8; $crate::core::mem::size_of::<$s>()]) -> Self {
                 $crate::cast!(s)
             }
         }
-        impl $crate::core::convert::From<$s> for [u8; <$s as $crate::Castable>::SIZE] {
+        impl $crate::core::convert::From<$s> for [u8; $crate::core::mem::size_of::<$s>()] {
             fn from(s: $s) -> Self {
                 $crate::cast!(s)
             }
