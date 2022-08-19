@@ -430,16 +430,12 @@ macro_rules! castable {
         }
         impl $crate::core::convert::From<[u8; <$s as $crate::Castable>::SIZE]> for $s {
             fn from(s: [u8; <$s as $crate::Castable>::SIZE]) -> Self {
-                unsafe {
-                    $crate::core::mem::transmute::<[u8; <$s as $crate::Castable>::SIZE], Self>(s)
-                }
+                $crate::cast!(s)
             }
         }
         impl $crate::core::convert::From<$s> for [u8; <$s as $crate::Castable>::SIZE] {
             fn from(s: $s) -> Self {
-                unsafe {
-                    $crate::core::mem::transmute::<$s, Self>(s)
-                }
+                $crate::cast!(s)
             }
         }
         )+
