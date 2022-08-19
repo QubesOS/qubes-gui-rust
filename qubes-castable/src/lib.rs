@@ -433,12 +433,12 @@ macro_rules! castable {
                 <$s as $crate::Castable>::zeroed()
             }
         }
-        impl $crate::core::convert::From<[u8; $crate::core::mem::size_of::<$s>()]> for $s {
+        impl $crate::core::convert::From<[$crate::core::primitive::u8; $crate::core::mem::size_of::<$s>()]> for $s {
             fn from(s: [u8; $crate::core::mem::size_of::<$s>()]) -> Self {
                 $crate::cast!(s)
             }
         }
-        impl $crate::core::convert::From<$s> for [u8; $crate::core::mem::size_of::<$s>()] {
+        impl $crate::core::convert::From<$s> for [$crate::core::primitive::u8; $crate::core::mem::size_of::<$s>()] {
             fn from(s: $s) -> Self {
                 $crate::cast!(s)
             }
