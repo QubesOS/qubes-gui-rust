@@ -338,53 +338,53 @@ qubes_castable::castable! {
     /// order.
     pub struct Header {
         /// Type of the message
-        ty: u32,
+        pub ty: u32,
         /// Window to which the message is directed.
         ///
         /// For all messages *except* CREATE, the window MUST exist.  For CREATE,
         /// the window MUST NOT exist.
-        window: u32,
+        pub window: u32,
         /// UNTRUSTED length value.  The GUI agent MAY use this to skip unknown
         /// message.  The GUI daemon MUST NOT use this to calculate the message
         /// length without sanitizing it first.
-        untrusted_len: u32,
+        pub untrusted_len: u32,
     }
 
     /// X and Y coordinates relative to the top-left of the screen
     pub struct Coordinates {
         /// X coordinate in pixels
-        x: u32,
+        pub x: u32,
         /// Y coordinate in pixels
-        y: u32,
+        pub y: u32,
     }
 
     /// Window size
     pub struct WindowSize {
         /// Width in pixels
-        width: u32,
+        pub width: u32,
         /// Height in pixels
-        height: u32,
+        pub height: u32,
     }
 
     /// A (x, y, width, height) tuple
     pub struct Rectangle {
         /// Coordinates of the top left corner of the rectangle
-        top_left: Coordinates,
+        pub top_left: Coordinates,
         /// Size of the rectangle
-        size: WindowSize
+        pub size: WindowSize
     }
 
     /// Daemon ⇒ agent: Version and root window configuration; sent only at
     /// startup, without a header.
     pub struct XConfVersion {
         /// Negotiated protocol version
-        version: u32,
+        pub version: u32,
         /// Root window size
-        size: WindowSize,
+        pub size: WindowSize,
         /// X11 Depth of the root window
-        depth: u32,
+        pub depth: u32,
         /// Memory (in KiB) required by the root window, with at least 1 byte to spare
-        mem: u32,
+        pub mem: u32,
     }
 
     /// Bidirectional: Metadata about a mapping
@@ -392,13 +392,13 @@ qubes_castable::castable! {
         /// The window that this is `transient_for`, or 0 if there is no such
         /// window.  The semantics of `transient_for` are defined in the X11
         /// ICCCM (Inter-Client Communication Conventions Manual).
-        transient_for: u32,
+        pub transient_for: u32,
         /// If this is 1, then this window (usually a menu) should not be
         /// managed by the window manager.  If this is 0, the window should be
         /// managed by the window manager.  All other values are invalid.  The
         /// semantics of this flag are the same as the X11 override_redirect
         /// flag, which this is implemented in terms of.
-        override_redirect: u32,
+        pub override_redirect: u32,
     }
 
     /// Agent ⇒ daemon: Create a window.  This should always be followed by a
@@ -407,103 +407,103 @@ qubes_castable::castable! {
         /// Rectangle the window is to occupy.  It is a protocol error for the
         /// width or height to be zero, for the width to exceed
         /// [`MAX_WINDOW_WIDTH`], or for the height to exceed [`MAX_WINDOW_HEIGHT`].
-        rectangle: Rectangle,
+        pub rectangle: Rectangle,
         /// Parent window, or [`None`] if there is no parent window.  It is a
         /// protocol error to specify a parent window that does not exist.  The
         /// parent window (or lack theirof) cannot be changed after a window has
         /// been created.
-        parent: Option<NonZeroU32>,
+        pub parent: Option<NonZeroU32>,
         /// If this is 1, then this window (usually a menu) should not be
         /// managed by the window manager.  If this is 0, the window should be
         /// managed by the window manager.  All other values are invalid.
-        override_redirect: u32,
+        pub override_redirect: u32,
     }
 
     /// Daemon ⇒ agent: Keypress
     pub struct Keypress {
         /// The X11 type of key pressed.  MUST be 2 ([`EV_KEY_PRESS`]) or 3
         /// ([`EV_KEY_RELEASE`]).  Anything else is a protocol violation.
-        ty: u32,
+        pub ty: u32,
         /// Coordinates of the key press
-        coordinates: Coordinates,
+        pub coordinates: Coordinates,
         /// X11 key press state
-        state: u32,
+        pub state: u32,
         /// X11 key code
-        keycode: u32,
+        pub keycode: u32,
     }
 
     /// Daemon ⇒ agent: Button press
     pub struct Button {
         /// The type of event.  MUST be 4 ([`EV_BUTTON_PRESS`]) or 5
         /// ([`EV_BUTTON_RELEASE`]).  Anything else is a protocol violation.
-        ty: u32,
+        pub ty: u32,
         /// Coordinates of the button press
-        coordinates: Coordinates,
+        pub coordinates: Coordinates,
         /// Bitmask of modifier keys
-        state: u32,
+        pub state: u32,
         /// X11 button number
-        button: u32,
+        pub button: u32,
     }
 
     /// Daemon ⇒ agent: Motion event
     pub struct Motion {
         /// Coordinates of the motion event
-        coordinates: Coordinates,
+        pub coordinates: Coordinates,
         /// Bitmask of buttons that are pressed
-        state: u32,
+        pub state: u32,
         /// X11 is_hint flag
-        is_hint: u32,
+        pub is_hint: u32,
     }
 
     /// Daemon ⇒ agent: Crossing event
     pub struct Crossing {
         /// Type of the crossing
-        ty: u32,
+        pub ty: u32,
         /// Coordinates of the crossing
-        coordinates: Coordinates,
+        pub coordinates: Coordinates,
         /// X11 state of the crossing
-        state: u32,
+        pub state: u32,
         /// X11 mode of the crossing
-        mode: u32,
+        pub mode: u32,
         /// X11 detail of the crossing
-        detail: u32,
+        pub detail: u32,
         /// X11 focus of the crossing
-        focus: u32,
+        pub focus: u32,
     }
 
     /// Bidirectional: Configure event
     pub struct Configure {
         /// Desired rectangle position and size
-        rectangle: Rectangle,
+        pub rectangle: Rectangle,
         /// If this is 1, then this window (usually a menu) should not be
         /// managed by the window manager.  If this is 0, the window should be
         /// managed by the window manager.  All other values are invalid.
-        override_redirect: u32,
+        pub override_redirect: u32,
     }
 
     /// Agent ⇒ daemon: Update the given region of the window from the contents of shared memory
     pub struct ShmImage {
         /// Rectangle to update
-        rectangle: Rectangle,
+        pub rectangle: Rectangle,
     }
 
     /// Daemon ⇒ agent: Focus event from GUI qube
     pub struct Focus {
         /// The type of event.  MUST be 9 ([`EV_FOCUS_IN`]) or 10
         /// ([`EV_FOCUS_OUT`]).  Anything else is a protocol error.
-        ty: u32,
+        pub ty: u32,
         /// The X11 event mode.  This is not used in the Qubes GUI protocol.
         /// Daemons MUST set this to 0 to avoid information leaks.  Agents MAY
         /// consider nonzero values to be a protocol error.
-        mode: u32,
+        pub mode: u32,
         /// The X11 event detail.  MUST be between 0 and 7 inclusive.
-        detail: u32,
+        pub detail: u32,
     }
 
     /// Agent ⇒ daemon: Set the window name
     pub struct WMName {
         /// NUL-terminated name
-        data: [u8; 128],
+        pub data: [u8; 128],
     }
 
     /// Agent ⇒ daemon: Unmap the window.  Unmapping a window that is not
@@ -521,73 +521,73 @@ qubes_castable::castable! {
     /// Daemon ⇒ agent: Keymap change notification
     pub struct KeymapNotify {
         /// X11 keymap returned by XQueryKeymap()
-        keys: [u8; 32],
+        pub keys: [u8; 32],
     }
 
     /// Agent ⇒ daemon: Set window hints
     pub struct WindowHints {
         /// Which elements are valid?
-        flags: u32,
+        pub flags: u32,
         /// Minimum size
-        min_size: WindowSize,
+        pub min_size: WindowSize,
         /// Maximum size
-        max_size: WindowSize,
+        pub max_size: WindowSize,
         /// Size increment
-        size_increment: WindowSize,
+        pub size_increment: WindowSize,
         /// Base size
-        size_base: WindowSize,
+        pub size_base: WindowSize,
     }
 
     /// Bidirectional: Set window flags
     pub struct WindowFlags {
         /// Flags to set
-        set: u32,
+        pub set: u32,
         /// Flags to unset
-        unset: u32,
+        pub unset: u32,
     }
 
     /// Agent ⇒ daemon: map mfns, deprecated
     pub struct ShmCmd {
         /// ID of the shared memory segment.  Unused; SHOULD be 0.
-        shmid: u32,
+        pub shmid: u32,
         /// Width of the rectangle to update
-        width: u32,
+        pub width: u32,
         /// Height of the rectangle to update
-        height: u32,
+        pub height: u32,
         /// Bits per pixel; MUST be 24
-        bpp: u32,
+        pub bpp: u32,
         /// Offset from first page.  MUST be less than 4096.
-        off: u32,
+        pub off: u32,
         /// Number of pages to map.  These follow this struct.
-        num_mfn: u32,
+        pub num_mfn: u32,
         /// Source domain ID.  Unused; SHOULD be 0.
-        domid: u32,
+        pub domid: u32,
     }
 
     /// Agent ⇒ daemon: set window class
     pub struct WMClass {
         /// Window class
-        res_class: [u8; 64],
+        pub res_class: [u8; 64],
         /// Window name
-        res_name: [u8; 64],
+        pub res_name: [u8; 64],
     }
 
     /// Agent ⇒ daemon: Header of a window dump message
     pub struct WindowDumpHeader {
         /// Type of message
-        ty: u32,
+        pub ty: u32,
         /// Width in pixels
-        width: u32,
+        pub width: u32,
         /// Height in pixels
-        height: u32,
+        pub height: u32,
         /// Bits per pixel.  MUST be 24.
-        bpp: u32,
+        pub bpp: u32,
     }
 
     /// Agent ⇒ daemon: Header of a window dump message
     pub struct Cursor {
         /// Type of cursor
-        cursor: u32,
+        pub cursor: u32,
     }
 }
 

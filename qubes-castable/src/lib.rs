@@ -267,9 +267,9 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     /// A struct
 ///     struct Test {
 ///         /// First field
-///         s: u32,
+///         pub s: u32,
 ///         /// Second field
-///         y: u64,
+///         pub y: u64,
 ///     }
 /// };
 /// ```
@@ -283,9 +283,9 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     /// A struct
 ///     struct Test {
 ///         /// First field
-///         y: u64,
+///         pub y: u64,
 ///         /// Second field
-///         s: u32,
+///         pub s: u32,
 ///     }
 /// };
 /// ```
@@ -298,9 +298,9 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     /// A struct
 ///     struct Test {
 ///         /// First field
-///         s: u32,
+///         pub s: u32,
 ///         /// Second field
-///         y: bool,
+///         pub y: bool,
 ///     }
 /// };
 /// ```
@@ -313,9 +313,9 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     /// A struct
 ///     struct Test {
 ///         /// First field
-///         s: u32,
+///         pub s: u32,
 ///         /// Second field
-///         y: u32,
+///         pub y: u32,
 ///     }
 /// };
 /// ```
@@ -328,9 +328,9 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     /// A struct
 ///     struct Test {
 ///         /// First field
-///         s: u32,
+///         pub s: u32,
 ///         /// Second field
-///         y: u32,
+///         pub y: u32,
 ///     }
 /// };
 ///
@@ -338,9 +338,9 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     /// A struct
 ///     struct Test2 {
 ///         /// First field
-///         s: u32,
+///         pub s: u32,
 ///         /// Second field
-///         y: Test,
+///         pub y: Test,
 ///     }
 /// };
 /// ```
@@ -353,17 +353,17 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     /// A struct
 ///     struct Test {
 ///         /// First field
-///         s: u32,
+///         pub s: u32,
 ///         /// Second field
-///         y: u32,
+///         pub y: u32,
 ///     }
 ///
 ///     /// A struct
 ///     struct Test2 {
 ///         /// First field
-///         s: u32,
+///         pub s: u32,
 ///         /// Second field
-///         y: Test,
+///         pub y: Test,
 ///     }
 /// };
 /// ```
@@ -376,7 +376,7 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     /// A struct
 ///     struct Bad {
 ///         /// First field
-///         s: core::num::NonZeroU32,
+///         pub s: core::num::NonZeroU32,
 ///     }
 /// }
 /// ```
@@ -389,9 +389,9 @@ unsafe impl<T: Castable, const COUNT: usize> Castable for [T; COUNT] {
 ///     /// A struct
 ///     struct Good {
 ///         /// First field
-///         s: Option<core::num::NonZeroU32>,
+///         pub s: Option<core::num::NonZeroU32>,
 ///         /// Second field
-///         t: Option<std::num::NonZeroU32>,
+///         pub t: Option<std::num::NonZeroU32>,
 ///     }
 /// }
 /// ```
@@ -401,7 +401,7 @@ macro_rules! castable {
     $p: vis struct $s: ident {
         $(
             $(#[doc = $n: expr])*
-            $name: ident : $ty : ty
+            pub $name: ident : $ty : ty
         ),*$(,)?
     })+) => {
         $(
@@ -563,7 +563,7 @@ mod test {
     fn basic() {
         castable! {
             struct Simple {
-                i: u8,
+                pub i: u8,
             }
         }
         let mut dummy: Simple = Default::default();
@@ -580,7 +580,7 @@ mod test {
         use core::{convert::TryInto, num::NonZeroU32};
         castable! {
             struct Options {
-                i: Option<NonZeroU32>
+                pub i: Option<NonZeroU32>
             }
         }
 
