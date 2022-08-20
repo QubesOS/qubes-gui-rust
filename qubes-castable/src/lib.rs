@@ -3,6 +3,7 @@
 //! These macros are used to construct types that can be safely cast two and
 //! from a raw byte sequence.
 #![no_std]
+#![forbid(clippy::all)]
 
 #[doc(hidden)]
 pub extern crate core;
@@ -78,8 +79,6 @@ pub unsafe trait Castable:
             let size = core::mem::size_of_val(self);
             // Obtain a mutable pointer to `obj`
             let raw_ptr = self as *mut Self;
-            // End the lifetime of `obj`, to avoid aliasing mutable references
-            core::mem::forget(self);
             // SAFETY: since &mut references are never aliased, there are currently
             // *no* references to `obj`.  Furthermore, *any* bit pattern for `obj`
             // is valid by the contract of `Castable`, so writing through the
@@ -517,8 +516,6 @@ pub fn as_mut_bytes<T: Castable>(obj: &mut [T]) -> &mut [u8] {
     unsafe {
         // Obtain a mutable pointer to `obj` and the length
         let (raw_ptr, len) = (obj.as_mut_ptr(), obj.len());
-        // End the lifetime of `obj`, to avoid aliasing mutable references
-        core::mem::forget(obj);
         // SAFETY: since &mut references are never aliased, there are currently
         // *no* references to `obj`.  Furthermore, *any* bit pattern for `obj`
         // is valid by the contract of `Castable`, so writing through the

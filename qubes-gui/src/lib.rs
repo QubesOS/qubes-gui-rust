@@ -112,6 +112,8 @@
 
 #![forbid(missing_docs)]
 #![no_std]
+#![forbid(clippy::all)]
+
 use core::convert::TryFrom;
 use core::num::NonZeroU32;
 use core::result::Result;

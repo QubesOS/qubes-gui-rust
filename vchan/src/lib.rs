@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  */
+#![forbid(clippy::all, improper_ctypes, improper_ctypes_definitions)]
+
 use std::io::{Error, Read, Write};
 use std::os::{raw::c_int, unix::prelude::RawFd};
 
@@ -46,11 +48,7 @@ pub struct Vchan {
 fn c_int_to_usize(i: c_int) -> usize {
     assert!(i >= 0, "c_int_to_usize passed negative number");
     // If u32 doesn’t actually fit in a usize, fail the build
-    let [] = [0; if c_int::MAX as usize as c_int == c_int::MAX {
-        0
-    } else {
-        1
-    }];
+    const _: () = assert!(c_int::MAX as usize as c_int == c_int::MAX);
     i as usize
 }
 

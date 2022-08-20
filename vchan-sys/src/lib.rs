@@ -19,6 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  */
+#![forbid(clippy::all)]
+
 #[repr(C)]
 #[allow(non_camel_case_types)]
 pub struct libvchan_t {

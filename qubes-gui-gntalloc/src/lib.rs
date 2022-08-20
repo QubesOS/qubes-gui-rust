@@ -1,5 +1,6 @@
 //! Grant-table manipulation code
 
+#![forbid(clippy::all)]
 use std::io;
 use std::os::unix::io::AsRawFd as _;
 use std::rc::{Rc, Weak};

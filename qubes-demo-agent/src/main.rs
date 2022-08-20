@@ -34,7 +34,7 @@ fn main() -> std::io::Result<()> {
     let mut title_buf = [0u8; 128];
     title_buf[..title.len()].copy_from_slice(title);
     vchan
-        .send_raw(&mut title_buf, window, qubes_gui::Msg::SetTitle as _)
+        .send_raw(&title_buf, window, qubes_gui::Msg::SetTitle as _)
         .unwrap();
     vchan
         .send(

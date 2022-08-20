@@ -22,6 +22,7 @@
 
 #![forbid(missing_docs)]
 #![forbid(unconditional_recursion)]
+#![forbid(clippy::all)]
 
 use qubes_castable::Castable as _;
 pub use qubes_gui;
@@ -108,7 +109,7 @@ impl Client {
     /// If a message header is read successfully, `Poll::Ready(Ok(r))` is returned, and
     /// `r` can be used to access the message body.  If there is not enough data, `Poll::Pending`
     /// is returned.  `Poll::Ready(Err(_))` is returned if an error occurs.
-    pub fn read_header<'a>(&'a mut self) -> Poll<io::Result<(qubes_gui::Header, &'a [u8])>> {
+    pub fn read_header(&mut self) -> Poll<io::Result<(qubes_gui::Header, &[u8])>> {
         match self.raw.read_header() {
             Ok(None) => Poll::Pending,
             Ok(Some((header, buffer))) => Poll::Ready(Ok((header, buffer))),

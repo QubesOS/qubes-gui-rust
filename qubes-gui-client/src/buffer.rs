@@ -132,7 +132,7 @@ impl<T: VchanMock> RawMessageStream<T> {
             }
             written += written_this_time;
             for _ in 0..written_this_time {
-                drop(self.queue.pop_front())
+                let _ = self.queue.pop_front();
             }
         }
     }

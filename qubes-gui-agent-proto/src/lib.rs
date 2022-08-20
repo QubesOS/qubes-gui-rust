@@ -20,6 +20,7 @@
  */
 
 #![no_std]
+#![forbid(clippy::all)]
 //! Agent-side parser for Qubes OS GUI Protocol
 //!
 //! This implements agent-side parsing for Qubes OS GUI messages.  It performs
