@@ -12,7 +12,7 @@ use core::mem::size_of;
 #[macro_export]
 macro_rules! static_assert {
     ($e: expr) => {{
-        let [] = [0; if $e { 0 } else { 1 }];
+        const _: () = assert!($e);
     }};
 }
 
@@ -421,15 +421,15 @@ macro_rules! castable {
         unsafe impl $crate::Castable for $s {}
         impl $crate::core::default::Default for $s {
             fn default() -> Self {
-                const fn size_of_castable<T: $crate::Castable>() -> $crate::core::primitive::usize {
+                const fn _size_of_castable<T: $crate::Castable>() -> $crate::core::primitive::usize {
                     $crate::core::mem::size_of::<T>()
                 }
-                const SIZE: $crate::core::primitive::usize = ($(
+                const _: () = assert!($(
                     (
-                        size_of_castable::<$ty>()
+                        _size_of_castable::<$ty>()
                     ) +
-                )* 0);
-                $crate::static_assert!($crate::core::mem::size_of::<$s>() == SIZE);
+                )* 0 == _size_of_castable::<$s>(),
+                $crate::core::concat!("Struct ", stringify!($s), " contains padding!"));
                 <$s as $crate::Castable>::zeroed()
             }
         }
