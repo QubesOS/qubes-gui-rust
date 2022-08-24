@@ -94,9 +94,10 @@ fn main() -> std::io::Result<()> {
                     )
                     .unwrap();
 
-                let w = window.try_into().unwrap();
-                vchan.send(&new_size_and_position, w).unwrap();
-                vchan.send(&qubes_gui::ShmImage { rectangle }, w).unwrap()
+                vchan.send(&new_size_and_position, window).unwrap();
+                vchan
+                    .send(&qubes_gui::ShmImage { rectangle }, window)
+                    .unwrap()
             }
             Event::Focus { event } => println!("Focus event: {:?}", event),
             Event::WindowFlags { flags } => {

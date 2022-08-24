@@ -132,7 +132,10 @@ impl<'a> DaemonToAgentEvent<'a> {
     /// # Errors
     ///
     /// Fails if the given GUI message cannot be parsed.
-    pub fn parse(header: qubes_gui::Header, body: &'a [u8]) -> Result<Option<(u32, Self)>, Error> {
+    pub fn parse(
+        header: qubes_gui::Header,
+        body: &'a [u8],
+    ) -> Result<Option<(qubes_gui::WindowID, Self)>, Error> {
         use qubes_gui::Msg;
         assert_eq!(
             header.untrusted_len.try_into(),

@@ -335,7 +335,29 @@ pub trait Message: qubes_castable::Castable + core::default::Default {
     const KIND: Msg;
 }
 
+impl From<NonZeroU32> for WindowID {
+    fn from(other: NonZeroU32) -> Self {
+        Self {
+            window: Some(other),
+        }
+    }
+}
+
+impl From<u32> for WindowID {
+    fn from(other: u32) -> Self {
+        qubes_castable::cast!(other)
+    }
+}
+
 qubes_castable::castable! {
+    /// A window ID.
+    pub struct WindowID {
+        /// The window ID, or `None` for the special whole-screen window.  The
+        /// whole-screen window always exists.  Trying to create it is a
+        /// protocol error.
+        pub window: Option<NonZeroU32>,
+    }
+
     /// A GUI message as it appears on the wire.  All fields are in native byte
     /// order.
     pub struct Header {
@@ -345,7 +367,7 @@ qubes_castable::castable! {
         ///
         /// For all messages *except* CREATE, the window MUST exist.  For CREATE,
         /// the window MUST NOT exist.
-        pub window: u32,
+        pub window: WindowID,
         /// UNTRUSTED length value.  The GUI agent MAY use this to skip unknown
         /// message.  The GUI daemon MUST NOT use this to calculate the message
         /// length without sanitizing it first.

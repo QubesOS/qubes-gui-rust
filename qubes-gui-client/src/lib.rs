@@ -29,7 +29,6 @@ pub use qubes_gui;
 use std::collections::BTreeSet;
 use std::convert::TryInto;
 use std::io;
-use std::num::NonZeroU32;
 use std::task::Poll;
 
 mod buffer;
@@ -38,7 +37,7 @@ mod buffer;
 #[derive(Debug)]
 pub struct Client {
     raw: buffer::RawMessageStream<Option<vchan::Vchan>>,
-    present_windows: BTreeSet<NonZeroU32>,
+    present_windows: BTreeSet<qubes_gui::WindowID>,
     agent: bool,
 }
 
@@ -48,40 +47,45 @@ impl Client {
     pub fn send<T: qubes_gui::Message>(
         &mut self,
         message: &T,
-        window: NonZeroU32,
+        window: qubes_gui::WindowID,
     ) -> io::Result<()> {
         self.send_raw(message.as_bytes(), window, T::KIND as _)
     }
 
     /// Raw version of [`Client::send`].  Using [`Client::send`] is preferred
     /// where possible, as it automatically selects the correct message type.
-    pub fn send_raw(&mut self, message: &[u8], window: NonZeroU32, ty: u32) -> io::Result<()> {
+    pub fn send_raw(
+        &mut self,
+        message: &[u8],
+        window: qubes_gui::WindowID,
+        ty: u32,
+    ) -> io::Result<()> {
         let untrusted_len = message
             .len()
             .try_into()
             .expect("Message length must fit in a u32");
         let header = qubes_gui::Header {
             ty,
-            window: window.into(),
+            window,
             untrusted_len,
         };
         if self.agent {
             if header.ty == qubes_gui::Msg::Create as _ {
                 assert!(
                     self.present_windows.insert(window),
-                    "Creating window {} already in map!",
+                    "Creating window {:?} already in map!",
                     window
                 );
             } else if header.ty == qubes_gui::Msg::Destroy as _ {
                 assert!(
                     self.present_windows.remove(&window),
-                    "Trying to delete window {} not in map!",
+                    "Trying to delete window {:?} not in map!",
                     window
                 );
             } else {
                 assert!(
                     self.present_windows.contains(&window),
-                    "Sending message on nonexistant window {}!",
+                    "Sending message on nonexistant window {:?}!",
                     window
                 )
             }
