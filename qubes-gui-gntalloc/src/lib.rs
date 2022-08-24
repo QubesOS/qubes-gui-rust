@@ -196,10 +196,6 @@ impl Allocator {
         let dimensions = dimensions::WindowDimensions::new(width, height)?;
         assert_eq!(qubes_gui::XC_PAGE_SIZE % 4, 0);
         let grefs = dimensions.grefs();
-        assert!(
-            grefs <= qubes_gui::MAX_GRANT_REFS_COUNT,
-            "excessive width or height detected above"
-        );
         let mut channels: Vec<u64> = Vec::with_capacity((grefs as usize + 5) / 2);
         unsafe {
             let ptr = channels.as_mut_ptr() as *mut ioctl_gntalloc_alloc_gref;
@@ -283,3 +279,27 @@ pub fn new(peer: DomID) -> io::Result<Allocator> {
 
 const IOCTL_GNTALLOC_ALLOC_GREF: std::os::raw::c_ulong = 0x184705;
 const IOCTL_GNTALLOC_DEALLOC_GREF: std::os::raw::c_ulong = 0x104706;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn gref_limits() {
+        let max_dims = dimensions::WindowDimensions::new(
+            qubes_gui::MAX_WINDOW_WIDTH,
+            qubes_gui::MAX_WINDOW_HEIGHT,
+        )
+        .unwrap();
+        assert!(dimensions::WindowDimensions::new(
+            qubes_gui::MAX_WINDOW_WIDTH + 1,
+            qubes_gui::MAX_WINDOW_HEIGHT
+        )
+        .is_err());
+        assert!(dimensions::WindowDimensions::new(
+            qubes_gui::MAX_WINDOW_WIDTH,
+            qubes_gui::MAX_WINDOW_HEIGHT + 1
+        )
+        .is_err());
+        assert_eq!(max_dims.grefs(), qubes_gui::MAX_GRANT_REFS_COUNT);
+    }
+}
