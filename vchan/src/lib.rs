@@ -56,49 +56,42 @@ impl Vchan {
     /// Creates a listening vchan that listens from requests from the given domain
     /// on the given port.
     #[inline]
-    pub fn server<T>(
-        domain: T,
-        port: c_int,
-        read_min: usize,
-        write_min: usize,
-    ) -> Result<Self, Error>
-    where
-        u16: From<T>,
-    {
-        Self::server_inner(domain.into(), port, read_min, write_min)
-    }
-
-    fn server_inner(
-        domain: u16,
+    pub fn server(
+        domain: impl Into<u16>,
         port: c_int,
         read_min: usize,
         write_min: usize,
     ) -> Result<Self, Error> {
-        let ptr =
-            unsafe { vchan_sys::libvchan_server_init(domain.into(), port, read_min, write_min) };
-        if ptr.is_null() {
-            Err(Error::last_os_error())
-        } else {
-            Ok(Self { inner: ptr })
+        fn server_inner(
+            domain: u16,
+            port: c_int,
+            read_min: usize,
+            write_min: usize,
+        ) -> Result<Vchan, Error> {
+            let ptr = unsafe {
+                vchan_sys::libvchan_server_init(domain.into(), port, read_min, write_min)
+            };
+            if ptr.is_null() {
+                Err(Error::last_os_error())
+            } else {
+                Ok(Vchan { inner: ptr })
+            }
         }
+        server_inner(domain.into(), port, read_min, write_min)
     }
 
     /// Creates a vchan that will connect to the given domain via the given port.
     #[inline]
-    pub fn client<T>(domain: T, port: c_int) -> Result<Self, Error>
-    where
-        u16: From<T>,
-    {
-        Self::client_inner(domain.into(), port)
-    }
-
-    fn client_inner(domain: u16, port: c_int) -> Result<Self, Error> {
-        let ptr = unsafe { vchan_sys::libvchan_client_init(domain.into(), port) };
-        if ptr.is_null() {
-            Err(Error::last_os_error())
-        } else {
-            Ok(Self { inner: ptr })
+    pub fn client(domain: impl Into<u16>, port: c_int) -> Result<Self, Error> {
+        fn client_inner(domain: u16, port: c_int) -> Result<Vchan, Error> {
+            let ptr = unsafe { vchan_sys::libvchan_client_init(domain.into(), port) };
+            if ptr.is_null() {
+                Err(Error::last_os_error())
+            } else {
+                Ok(Vchan { inner: ptr })
+            }
         }
+        client_inner(domain.into(), port)
     }
 
     /// Returns the underlying file descriptor.  The only valid use of this descriptor
