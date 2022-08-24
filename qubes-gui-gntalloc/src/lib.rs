@@ -92,6 +92,7 @@ mod dimensions {
 impl Buffer {
     /// Obtains a slice containing the exported grant references
     pub fn grants(&self) -> &[u32] {
+        // SAFETY: the buffer is valid for the specified bytes.
         unsafe {
             std::slice::from_raw_parts(
                 (self.inner.as_ptr() as *const u32).add(HEADER_U32S),
@@ -127,8 +128,9 @@ impl Buffer {
         assert!(buffer.len() % 4 == 0, "Copying fractional pixels");
         assert!(offset % 4 == 0, "Offset not integer pixel");
 
+        // SAFETY: Bounds were checked above.
         unsafe {
-            std::ptr::copy_nonoverlapping(
+            std::ptr::copy(
                 buffer.as_ptr(),
                 self.ptr.add(offset) as *mut u8,
                 buffer.len(),
@@ -152,6 +154,7 @@ impl Drop for Buffer {
             count: self.dimensions.grefs(),
         };
         assert!(self.ptr as usize % 4096 == 0, "Unaligned pointer???");
+        // SAFETY: the munmap parameters are correct
         if unsafe { libc::munmap(self.ptr, self.dimensions.buffer_size()) } != 0 {
             panic!(
                 "the inputs are correct, and this is not punching a hole in an \
@@ -160,6 +163,7 @@ impl Drop for Buffer {
             )
         }
         if let Some(alloc) = self.alloc.upgrade() {
+            // SAFETY: the ioctl parameters are correct
             unsafe {
                 assert_eq!(
                     libc::ioctl(alloc.as_raw_fd(), IOCTL_GNTALLOC_DEALLOC_GREF, &p),
@@ -203,6 +207,7 @@ impl Allocator {
         let mut channels: Vec<u64> = Vec::with_capacity((grefs as usize + 5) / 2);
         unsafe {
             let ptr = channels.as_mut_ptr() as *mut ioctl_gntalloc_alloc_gref;
+            // SAFETY: ptr points to a sufficiently large, properly-aligned buffer.
             std::ptr::write(
                 ptr,
                 ioctl_gntalloc_alloc_gref {
@@ -221,6 +226,7 @@ impl Allocator {
             } else {
                 assert_eq!(channels.capacity() * 2, grefs as usize + HEADER_U32S);
             }
+            // SAFETY: the ioctl parameters are correct.
             let res = libc::ioctl(
                 self.alloc.as_raw_fd(),
                 IOCTL_GNTALLOC_ALLOC_GREF,
@@ -230,8 +236,12 @@ impl Allocator {
                 assert_eq!(res, -1, "invalid return value from ioctl()");
                 return Err(io::Error::last_os_error());
             }
+            // SAFETY: the buffer has now been fully initialized and the length
+            // is equal to the capacity.
             channels.set_len(channels.capacity());
+            // SAFETY: ptr is correct.
             let offset = (*ptr).index;
+            // SAFETY: mmap parameters are correct.
             let ptr = libc::mmap(
                 std::ptr::null_mut(),
                 dimensions.buffer_size(),
@@ -246,6 +256,7 @@ impl Allocator {
                     count: grefs,
                 };
                 assert_eq!(
+                    // SAFETY: the ioctl parameters are correct.
                     libc::ioctl(self.alloc.as_raw_fd(), IOCTL_GNTALLOC_DEALLOC_GREF, &p),
                     0,
                     "Failed to release grant references"
