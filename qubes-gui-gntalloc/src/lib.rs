@@ -16,10 +16,18 @@ pub struct Allocator {
 
 /// A buffer sent to the GUI daemon
 pub struct Buffer {
-    inner: Vec<u64>,
+    /// The GUI message.  Logically, this is a [`qubes_gui::WindowDumpHeader`] followed by an array
+    /// of u32, but it is a `Vec<u64>` for alignment reasons.
+    message: Vec<u64>,
+    /// The underlying file used for ioctl calls.  This is necessary for cleanup
+    /// in the destructor.  If the file is closed, the kernel will handle
+    /// cleanup, so this is a weak reference.
     alloc: Weak<std::fs::File>,
+    /// The memory-mapped buffer.
     ptr: *mut libc::c_void,
+    /// The offset to be passed to [`libc::mmap`].
     offset: u64,
+    /// The window dimensions.
     dimensions: dimensions::WindowDimensions,
 }
 
@@ -95,7 +103,7 @@ impl Buffer {
         // SAFETY: the buffer is valid for the specified bytes.
         unsafe {
             std::slice::from_raw_parts(
-                (self.inner.as_ptr() as *const u32).add(HEADER_U32S),
+                (self.message.as_ptr() as *const u32).add(HEADER_U32S),
                 self.dimensions.grefs() as _,
             )
         }
@@ -142,8 +150,8 @@ impl Buffer {
     pub fn msg(&self) -> &[u8] {
         let total_length = self.dimensions.grefs() * 4
             + (std::mem::size_of::<qubes_gui::WindowDumpHeader>() as u32);
-        assert!(self.inner.capacity() * std::mem::size_of::<u64>() >= total_length as _);
-        unsafe { std::slice::from_raw_parts(self.inner.as_ptr() as *const u8, total_length as _) }
+        assert!(self.message.capacity() * std::mem::size_of::<u64>() >= total_length as _);
+        unsafe { std::slice::from_raw_parts(self.message.as_ptr() as *const u8, total_length as _) }
     }
 }
 
@@ -204,9 +212,9 @@ impl Allocator {
         let dimensions = dimensions::WindowDimensions::new(width, height)?;
         assert_eq!(qubes_gui::XC_PAGE_SIZE % 4, 0);
         let grefs = dimensions.grefs();
-        let mut channels: Vec<u64> = Vec::with_capacity((grefs as usize + 5) / 2);
+        let mut message: Vec<u64> = Vec::with_capacity((grefs as usize + 5) / 2);
         unsafe {
-            let ptr = channels.as_mut_ptr() as *mut ioctl_gntalloc_alloc_gref;
+            let ptr = message.as_mut_ptr() as *mut ioctl_gntalloc_alloc_gref;
             // SAFETY: ptr points to a sufficiently large, properly-aligned buffer.
             std::ptr::write(
                 ptr,
@@ -220,11 +228,11 @@ impl Allocator {
             );
             // Initialize the last u32 if needed
             if (grefs & 1) != 0 {
-                assert_eq!(channels.capacity() * 2, grefs as usize + HEADER_U32S + 1);
+                assert_eq!(message.capacity() * 2, grefs as usize + HEADER_U32S + 1);
                 // SAFETY: ptr points to a sufficiently large, properly-aligned buffer.
                 std::ptr::write((ptr as *mut u32).add(grefs as usize + HEADER_U32S), 0)
             } else {
-                assert_eq!(channels.capacity() * 2, grefs as usize + HEADER_U32S);
+                assert_eq!(message.capacity() * 2, grefs as usize + HEADER_U32S);
             }
             // SAFETY: the ioctl parameters are correct.
             let res = libc::ioctl(
@@ -238,7 +246,7 @@ impl Allocator {
             }
             // SAFETY: the buffer has now been fully initialized and the length
             // is equal to the capacity.
-            channels.set_len(channels.capacity());
+            message.set_len(message.capacity());
             // SAFETY: ptr is correct.
             let offset = (*ptr).index;
             // SAFETY: mmap parameters are correct.
@@ -266,7 +274,7 @@ impl Allocator {
                 // overwrite the struct passed to Linux, which is no longer
                 // needed, with the GUI message
                 std::ptr::write(
-                    channels.as_mut_ptr() as *mut _,
+                    message.as_mut_ptr() as *mut _,
                     qubes_gui::WindowDumpHeader {
                         ty: qubes_gui::WINDOW_DUMP_TYPE_GRANT_REFS,
                         width,
@@ -275,7 +283,7 @@ impl Allocator {
                     },
                 );
                 Ok(Buffer {
-                    inner: channels,
+                    message,
                     alloc: Rc::downgrade(&self.alloc),
                     ptr,
                     offset,
