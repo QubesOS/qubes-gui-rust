@@ -48,7 +48,7 @@ fn main() -> std::io::Result<()> {
     vchan.wait();
     loop {
         let (window, e) = loop {
-            match vchan.read_header().map(Result::unwrap) {
+            match vchan.read_message().map(Result::unwrap) {
                 Poll::Pending => vchan.wait(),
                 Poll::Ready((hdr, body)) => match Event::parse(hdr, body).unwrap() {
                     None => {}

@@ -110,11 +110,12 @@ impl Client {
         self.raw.wait()
     }
 
-    /// If a message header is read successfully, `Poll::Ready(Ok(r))` is returned, and
-    /// `r` can be used to access the message body.  If there is not enough data, `Poll::Pending`
-    /// is returned.  `Poll::Ready(Err(_))` is returned if an error occurs.
-    pub fn read_header(&mut self) -> Poll<io::Result<(qubes_gui::Header, &[u8])>> {
-        match self.raw.read_header() {
+    /// If a complete message has been buffered, returns `Ok(Some(msg))`.  If
+    /// more data needs to arrive, returns `Ok(None)`.  If an error occurs,
+    /// `Err` is returned, and the stream is placed in an error state.  If the
+    /// stream is in an error state, all further functions will fail.
+    pub fn read_message(&mut self) -> Poll<io::Result<(qubes_gui::Header, &[u8])>> {
+        match self.raw.read_message() {
             Ok(None) => Poll::Pending,
             Ok(Some((header, buffer))) => Poll::Ready(Ok((header, buffer))),
             Err(e) => Poll::Ready(Err(e)),

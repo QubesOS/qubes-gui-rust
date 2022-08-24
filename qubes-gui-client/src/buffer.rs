@@ -183,10 +183,11 @@ impl<T: VchanMock> RawMessageStream<T> {
         std::mem::replace(&mut self.did_reconnect, false)
     }
 
-    /// If there is nothing to read, return `Ok(None)` immediately; otherwise,
-    /// returns `Ok(Some(msg))` if a complete message has been read, or `Err`
-    /// if something went wrong.
-    pub fn read_header(&mut self) -> io::Result<Option<(Header, &[u8])>> {
+    /// If a complete message has been buffered, returns `Ok(Some(msg))`.  If
+    /// more data needs to arrive, returns `Ok(None)`.  If an error occurs,
+    /// `Err` is returned, and the stream is placed in an error state.  If the
+    /// stream is in an error state, all further functions will fail.
+    pub fn read_message(&mut self) -> io::Result<Option<(Header, &[u8])>> {
         const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConfVersion>();
         if let Err(e) = self.flush_pending_writes() {
             self.state = ReadState::Error;
@@ -476,7 +477,7 @@ mod tests {
         assert_eq!(under_test.vchan.write_buf, b"test1\0ano");
         assert_eq!(under_test.vchan.buffer_space, 0);
         under_test.vchan.buffer_space = 7;
-        assert_eq!(under_test.read_header().unwrap(), None, "no bytes to read");
+        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
         assert_eq!(under_test.vchan.buffer_space, 0);
         assert_eq!(under_test.vchan.write_buf, b"test1\0another al");
         assert_eq!(under_test.queue.len(), 3);
@@ -487,13 +488,13 @@ mod tests {
         under_test.write(b" gamma delta").expect("write works");
         under_test.write(b" gamma delta").expect("write works");
         under_test.vchan.buffer_space = 8;
-        assert_eq!(under_test.read_header().unwrap(), None, "no bytes to read");
+        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
         under_test.vchan.buffer_space = 8;
-        assert_eq!(under_test.read_header().unwrap(), None, "no bytes to read");
+        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
         under_test.vchan.buffer_space = 8;
-        assert_eq!(under_test.read_header().unwrap(), None, "no bytes to read");
+        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
         under_test.vchan.buffer_space = 8;
-        assert_eq!(under_test.read_header().unwrap(), None, "no bytes to read");
+        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
         assert_eq!(
             under_test.vchan.write_buf, b"test1\0another alpha gamma delta gamma delta gamma delta",
             "correct data written"
