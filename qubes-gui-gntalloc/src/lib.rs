@@ -248,7 +248,7 @@ impl Allocator {
                 libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_SHARED,
                 self.alloc.as_raw_fd(),
-                offset as i64,
+                offset as libc::off_t,
             );
             if ptr == libc::MAP_FAILED {
                 let p = ioctl_gntalloc_dealloc_gref {
