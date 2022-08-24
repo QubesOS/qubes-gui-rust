@@ -207,8 +207,7 @@ unsafe impl Castable for () {}
 // Unsafely implement Castable for Option<NonZero*>, but check layouts first
 macro_rules! unsafe_castable_nonzero {
     ($(($i: ident, $j: ident),)*) => {
-        #[allow(dead_code)]
-        const FAKE: () = {
+        const _: () = {
             $(
                 static_assert!(
                     size_of::<Option<core::num::$i>>() ==
