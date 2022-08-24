@@ -247,13 +247,17 @@ impl Allocator {
                 );
                 Err(io::Error::last_os_error())
             } else {
-                let channel_ptr = channels.as_mut_ptr() as *mut u32;
                 // overwrite the struct passed to Linux, which is no longer
                 // needed, with the GUI message
-                std::ptr::write(channel_ptr, qubes_gui::WINDOW_DUMP_TYPE_GRANT_REFS);
-                std::ptr::write(channel_ptr.add(1), width);
-                std::ptr::write(channel_ptr.add(2), height);
-                std::ptr::write(channel_ptr.add(3), 24);
+                std::ptr::write(
+                    channels.as_mut_ptr() as *mut _,
+                    qubes_gui::WindowDumpHeader {
+                        ty: qubes_gui::WINDOW_DUMP_TYPE_GRANT_REFS,
+                        width,
+                        height,
+                        bpp: 24,
+                    },
+                );
                 Ok(Buffer {
                     inner: channels,
                     alloc: Rc::downgrade(&self.alloc),
