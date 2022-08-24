@@ -154,7 +154,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     pub fn write(&mut self, buf: &[u8]) -> io::Result<()> {
         self.flush_pending_writes()?;
         if !self.queue.is_empty() {
-            self.queue.extend(buf.to_owned());
+            self.queue.extend(buf);
             return Ok(());
         }
         let written = Self::write_slice(&mut self.vchan, buf)?;
