@@ -457,7 +457,7 @@ macro_rules! castable {
 /// This function just returns its argument, but it is restricted to [`Castable`]
 /// types.  Its main use is in macros.
 #[inline(always)]
-pub fn id<T: Castable>(arg: T) -> T {
+pub fn assert_castable<T: Castable>(arg: T) -> T {
     arg
 }
 
@@ -504,11 +504,13 @@ macro_rules! cast {
         // SAFETY: All bit patterns are valid for castable types and they
         // have no padding.  Therefore, it is safe to reinterpret the bits
         // of a castable type as any other castable type of the same size.
-        // If the source type is not castable, the inner call to id will
-        // cause a type error.  If the outer type is not castable, the
-        // outer call to id will cause a type error.  If the sizes do not
-        // match, the call to transmute will be rejected by the compiler.
-        unsafe { $crate::id($crate::core::mem::transmute($crate::id($a))) }
+        // If the source type is not castable, the inner call to assert_castable
+        // will cause a type error.  If the outer type is not castable, the
+        // outer call to assert_castable will cause a type error.  If the sizes
+        // do not match, the call to transmute will be rejected by the compiler.
+        unsafe {
+            $crate::assert_castable($crate::core::mem::transmute($crate::assert_castable($a)))
+        }
     };
 }
 
