@@ -2,6 +2,7 @@
 
 #![forbid(clippy::all)]
 use std::io;
+use std::mem::size_of;
 use std::os::unix::io::AsRawFd as _;
 use std::rc::{Rc, Weak};
 
@@ -93,7 +94,7 @@ impl Buffer {
     pub fn grants(&self) -> &[u32] {
         unsafe {
             std::slice::from_raw_parts(
-                (self.inner.as_ptr() as *const u32).add(4),
+                (self.inner.as_ptr() as *const u32).add(HEADER_U32S),
                 self.dimensions.grefs() as _,
             )
         }
@@ -177,11 +178,14 @@ struct ioctl_gntalloc_alloc_gref {
     flags: u16,
     count: u32,
     index: u64,
-    gref_ids: [u32; 1],
+    gref_ids: [u32; 0],
 }
 
 // Indicates that a mapping should be writable
 const GNTALLOC_FLAG_WRITABLE: u16 = 1;
+
+/// The size of the header
+const HEADER_U32S: usize = size_of::<ioctl_gntalloc_alloc_gref>() / size_of::<u32>();
 
 #[repr(C)]
 #[allow(nonstandard_style)]
@@ -206,15 +210,16 @@ impl Allocator {
                     flags: GNTALLOC_FLAG_WRITABLE,
                     count: grefs,
                     index: 0,
-                    gref_ids: [0],
+                    gref_ids: [],
                 },
             );
             // Initialize the last u32 if needed
             if (grefs & 1) != 0 {
-                assert_eq!(channels.capacity() * 2, grefs as usize + 5);
-                std::ptr::write((ptr as *mut u32).add(grefs as usize + 4), 0)
+                assert_eq!(channels.capacity() * 2, grefs as usize + HEADER_U32S + 1);
+                // SAFETY: ptr points to a sufficiently large, properly-aligned buffer.
+                std::ptr::write((ptr as *mut u32).add(grefs as usize + HEADER_U32S), 0)
             } else {
-                assert_eq!(channels.capacity() * 2, grefs as usize + 4);
+                assert_eq!(channels.capacity() * 2, grefs as usize + HEADER_U32S);
             }
             let res = libc::ioctl(
                 self.alloc.as_raw_fd(),
