@@ -246,6 +246,7 @@ impl<T: VchanMock> RawMessageStream<T> {
                         // Discard unknown messages, but see below comment
                         // regarding empty ones.
                         None if untrusted_len == 0 => continue,
+                        // Handle unknown message lengths.
                         None => self.state = ReadState::Discard(untrusted_len),
                         Some(allowed_lengths) if allowed_lengths.contains(&untrusted_len) => {
                             // length was sanitized above
