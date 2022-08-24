@@ -17,9 +17,12 @@ pub use core::{
 /// If the provided expression is false, fail the build with a type error.
 #[macro_export]
 macro_rules! static_assert {
-    ($e: expr) => {{
+    ($e: expr) => {
         const _: () = assert!($e);
-    }};
+    };
+    ($e: expr, $msg: expr) => {
+        const _: () = assert!($e, $msg);
+    };
 }
 
 /// A trait for types that can be casted to and from a raw byte slice.
@@ -413,26 +416,25 @@ macro_rules! castable {
         }
         // SAFETY:
         //
-        // The static_assert! in the Default::default() implementation checks
-        // that the size of the struct is equal to the sum of the sizes of its
-        // members.  This means that the struct cannot have any padding.  It
-        // also checks that each field implements Castable.  Since the struct is
-        // comprised entirely of its individual fields, and since the individual
-        // fields are Castable, the result struct is Castable too.
-        //
-        // Together, these checks imply that the Castable contract is met.
+        // The static_assert! below checks that the size of the struct is equal
+        // to the sum of the sizes of its members.  This means that the struct
+        // cannot have any padding.  It also checks that each field implements
+        // Castable.  Since the struct is comprised entirely of its individual
+        // fields, and since the individual fields are Castable, the result
+        // struct meets the Castable contract.
         unsafe impl $crate::Castable for $s {}
+        $crate::static_assert!({
+            const fn _size_of_castable<T: $crate::Castable>() -> $crate::usize {
+                $crate::size_of::<T>()
+            }
+            $(
+                (
+                    _size_of_castable::<$ty>()
+                ) +
+            )* 0 == _size_of_castable::<$s>()
+        }, $crate::core::concat!("Struct ", stringify!($s), " contains padding!"));
         impl $crate::core::default::Default for $s {
             fn default() -> Self {
-                const fn _size_of_castable<T: $crate::Castable>() -> $crate::usize {
-                    $crate::size_of::<T>()
-                }
-                const _: () = assert!($(
-                    (
-                        _size_of_castable::<$ty>()
-                    ) +
-                )* 0 == _size_of_castable::<$s>(),
-                $crate::core::concat!("Struct ", stringify!($s), " contains padding!"));
                 <$s as $crate::Castable>::zeroed()
             }
         }
