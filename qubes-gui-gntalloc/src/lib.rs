@@ -185,7 +185,7 @@ struct ioctl_gntalloc_alloc_gref {
     gref_ids: [u32; 0],
 }
 
-// Indicates that a mapping should be writable
+/// Indicates that a mapping should be writable
 const GNTALLOC_FLAG_WRITABLE: u16 = 1;
 
 /// The size of the header
