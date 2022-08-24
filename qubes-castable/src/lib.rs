@@ -210,13 +210,13 @@ macro_rules! unsafe_castable_nonzero {
         #[allow(dead_code)]
         const FAKE: () = {
             $(
-                $crate::static_assert!(
-                    $crate::size_of::<Option<$crate::core::num::$i>>() ==
-                    $crate::size_of::<$j>());
+                static_assert!(
+                    size_of::<Option<core::num::$i>>() ==
+                    size_of::<$j>());
                 #[forbid(improper_ctypes)]
                 #[forbid(improper_ctypes_definitions)]
                 #[allow(nonstandard_style)]
-                extern "C" fn $i() -> Option<$crate::core::num::$i> { unreachable!() }
+                extern "C" fn $i() -> Option<core::num::$i> { unreachable!() }
                 #[forbid(improper_ctypes)]
                 #[forbid(improper_ctypes_definitions)]
                 #[allow(nonstandard_style)]
@@ -228,7 +228,7 @@ macro_rules! unsafe_castable_nonzero {
             unsafe impl Castable for $j {}
             // SAFETY: Option<NonZero*> satisfies the Castable requirements due to the null pointer
             // optimization.
-            unsafe impl Castable for Option<$crate::core::num::$i> {}
+            unsafe impl Castable for Option<core::num::$i> {}
         )*
     }
 }
