@@ -104,6 +104,12 @@ fn u32_to_usize(i: u32) -> usize {
 }
 
 impl<T: VchanMock> RawMessageStream<T> {
+    /// Attempts to write as much of `slice` as possible to the `vchan`.  Never
+    /// blocks.  Returns the number of bytes written.
+    ///
+    /// # Errors
+    ///
+    /// Fails if writing to the vchan fails.
     fn write_slice(vchan: &mut T, slice: &[u8]) -> io::Result<usize> {
         let space = vchan.buffer_space();
         if space == 0 {
@@ -114,6 +120,8 @@ impl<T: VchanMock> RawMessageStream<T> {
         }
     }
 
+    /// Write as much of the buffered data as possible without blocking.
+    /// Returns the number of bytes successfully written.
     fn flush_pending_writes(&mut self) -> io::Result<usize> {
         let mut written = 0;
         loop {
@@ -137,6 +145,12 @@ impl<T: VchanMock> RawMessageStream<T> {
         }
     }
 
+    /// Write as much of the buffered data to the vchan as possible.  Queue the
+    /// rest in an internal buffer.
+    ///
+    /// # Errors
+    ///
+    /// Fails if there is an I/O error on the vchan.
     pub fn write(&mut self, buf: &[u8]) -> io::Result<()> {
         self.flush_pending_writes()?;
         if !self.queue.is_empty() {
@@ -159,6 +173,7 @@ impl<T: VchanMock> RawMessageStream<T> {
         })
     }
 
+    /// Acknowledge an event on the vchan.
     pub fn wait(&mut self) {
         self.vchan.wait()
     }
