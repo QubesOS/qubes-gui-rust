@@ -7,7 +7,12 @@
 
 #[doc(hidden)]
 pub extern crate core;
-use core::mem::size_of;
+#[doc(hidden)]
+pub use core::{
+    convert::From,
+    mem::size_of,
+    primitive::{u8, usize},
+};
 
 /// If the provided expression is false, fail the build with a type error.
 #[macro_export]
@@ -206,8 +211,8 @@ macro_rules! unsafe_castable_nonzero {
         const FAKE: () = {
             $(
                 $crate::static_assert!(
-                    $crate::core::mem::size_of::<Option<$crate::core::num::$i>>() ==
-                    $crate::core::mem::size_of::<$j>());
+                    $crate::size_of::<Option<$crate::core::num::$i>>() ==
+                    $crate::size_of::<$j>());
                 #[forbid(improper_ctypes)]
                 #[forbid(improper_ctypes_definitions)]
                 #[allow(nonstandard_style)]
@@ -420,8 +425,8 @@ macro_rules! castable {
         unsafe impl $crate::Castable for $s {}
         impl $crate::core::default::Default for $s {
             fn default() -> Self {
-                const fn _size_of_castable<T: $crate::Castable>() -> $crate::core::primitive::usize {
-                    $crate::core::mem::size_of::<T>()
+                const fn _size_of_castable<T: $crate::Castable>() -> $crate::usize {
+                    $crate::size_of::<T>()
                 }
                 const _: () = assert!($(
                     (
@@ -432,12 +437,12 @@ macro_rules! castable {
                 <$s as $crate::Castable>::zeroed()
             }
         }
-        impl $crate::core::convert::From<[$crate::core::primitive::u8; $crate::core::mem::size_of::<$s>()]> for $s {
-            fn from(s: [u8; $crate::core::mem::size_of::<$s>()]) -> Self {
+        impl $crate::From<[$crate::u8; $crate::size_of::<$s>()]> for $s {
+            fn from(s: [u8; $crate::size_of::<$s>()]) -> Self {
                 $crate::cast!(s)
             }
         }
-        impl $crate::core::convert::From<$s> for [$crate::core::primitive::u8; $crate::core::mem::size_of::<$s>()] {
+        impl $crate::From<$s> for [$crate::u8; $crate::size_of::<$s>()] {
             fn from(s: $s) -> Self {
                 $crate::cast!(s)
             }
