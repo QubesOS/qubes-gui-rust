@@ -455,24 +455,22 @@ mod tests {
         };
         under_test.write(b"test1").unwrap();
         assert_eq!(under_test.queue.len(), 5, "message queued");
-        assert_eq!(under_test.queue.as_slices().0[0..5], *b"test1");
+        assert_eq!(under_test.queue, *b"test1");
         assert_eq!(under_test.vchan.write_buf, b"", "no bytes written");
         under_test.vchan.buffer_space = 3;
         under_test
             .flush_pending_writes()
             .expect("drained successfully");
         assert_eq!(under_test.queue.len(), 2);
-        assert_eq!(under_test.queue.as_slices().0[0..2], *b"t1");
+        assert_eq!(under_test.queue, *b"t1");
         assert_eq!(under_test.vchan.write_buf, b"tes");
         assert_eq!(under_test.vchan.buffer_space, 0);
         under_test.vchan.buffer_space = 4;
         under_test.write(b"\0another alpha").unwrap();
         assert_eq!(under_test.queue.len(), 12);
         assert_eq!(under_test.vchan.write_buf, b"test1\0a");
-        under_test.queue.make_contiguous();
         assert_eq!(
-            under_test.queue.as_slices().0,
-            *b"nother alpha",
+            under_test.queue, *b"nother alpha",
             "only the minimum number of bytes stored"
         );
         under_test.vchan.buffer_space = 2;
@@ -486,7 +484,7 @@ mod tests {
         assert_eq!(under_test.vchan.buffer_space, 0);
         assert_eq!(under_test.vchan.write_buf, b"test1\0another al");
         assert_eq!(under_test.queue.len(), 3);
-        assert_eq!(under_test.queue.as_slices().0, *b"pha");
+        assert_eq!(under_test.queue, *b"pha");
         under_test.vchan.buffer_space = 8;
         under_test.write(b" gamma delta").expect("write works");
         assert_eq!(under_test.vchan.write_buf, b"test1\0another alpha gamm");
