@@ -152,7 +152,11 @@ impl Vchan {
     ///
     /// # Safety
     ///
-    /// The provided pointer must be valid to write to for the provided size.
+    /// It must be permissable to write to the half-open range
+    /// [ptr, ptr.add_size()).  It is _not_ necessary that the memory in this
+    /// range be initialized, as this function will never read from it.  If this
+    /// function returns successfully, the memory in the range *will* be
+    /// initialized.
     unsafe fn unsafe_recv(&mut self, ptr: *mut c_void, size: usize) -> Result<usize, Error> {
         // SAFETY: by the function's precondition, ptr can validly have size
         // bytes written to it.  By Rust's type safety, self.inner is a valid
@@ -178,8 +182,8 @@ impl Vchan {
     #[cfg(feature = "castable")]
     pub fn recv_struct<T: qubes_castable::Castable>(&mut self) -> Result<T, Error> {
         let mut datum = std::mem::MaybeUninit::<T>::uninit();
-        // SAFETY: status.as_mut_ptr() is a valid pointer to
-        // size_of::<T>() bytes of memory
+        // SAFETY: status.as_mut_ptr() is a valid pointer to size_of::<T>()
+        // bytes of memory, and unsafe_recv() is okay with uninitialized memory.
         unsafe { self.unsafe_recv(datum.as_mut_ptr() as *mut _, std::mem::size_of::<T>()) }?;
         // SAFETY: libvchan_recv fully initialized the buffer, and a
         // Castable struct can have any byte pattern.
