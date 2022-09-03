@@ -22,7 +22,7 @@
 #![forbid(clippy::all, improper_ctypes, improper_ctypes_definitions)]
 
 use std::io::{Error, Read, Write};
-use std::os::{raw::c_int, unix::prelude::RawFd};
+use std::os::{raw::c_int, raw::c_void, unix::prelude::RawFd};
 
 /// Status of the channel
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -149,43 +149,41 @@ impl Vchan {
     }
 
     /// Block until the given buffer is full
-    pub fn recv(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
-        let res =
-            unsafe { vchan_sys::libvchan_recv(self.inner, buffer.as_mut_ptr() as _, buffer.len()) };
+    ///
+    /// # Safety
+    ///
+    /// The provided pointer must be valid to write to for the provided size.
+    unsafe fn unsafe_recv(&mut self, ptr: *mut c_void, size: usize) -> Result<usize, Error> {
+        // SAFETY: by the function's precondition, ptr can validly have size
+        // bytes written to it.  By Rust's type safety, self.inner is a valid
+        // vchan.
+        let res = vchan_sys::libvchan_recv(self.inner, ptr, size);
         if res == -1 {
             Err(Error::last_os_error())
         } else {
             assert!(res >= 0, "received negative number of bytes?");
-            assert_eq!(res as usize, buffer.len(), "libvchan_recv short read?");
+            assert_eq!(res as usize, size, "libvchan_recv short read?");
             Ok(res as _)
         }
+    }
+
+    /// Block until the given buffer is full
+    pub fn recv(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
+        // SAFETY: buffer.as_mut_ptr() is a valid pointer to
+        // buffer.len() bytes of memory
+        unsafe { self.unsafe_recv(buffer.as_mut_ptr() as _, buffer.len()) }
     }
 
     /// Receive any [`Castable`] struct.  Blocks until the read is complete.
     #[cfg(feature = "castable")]
     pub fn recv_struct<T: qubes_castable::Castable>(&mut self) -> Result<T, Error> {
-        let mut status = std::mem::MaybeUninit::<T>::uninit();
-        // SAFETY: parameters are correct
-        let res = unsafe {
-            vchan_sys::libvchan_recv(
-                self.inner,
-                status.as_mut_ptr() as *mut _,
-                std::mem::size_of::<T>(),
-            )
-        };
-        if res == -1 {
-            Err(Error::last_os_error())
-        } else {
-            assert!(res >= 0, "received negative number of bytes?");
-            assert_eq!(
-                res as usize,
-                std::mem::size_of::<T>(),
-                "libvchan_recv short read?"
-            );
-            // SAFETY: libvchan_recv fully initialized the buffer, and a
-            // Castable struct can have any byte pattern.
-            unsafe { Ok(status.assume_init()) }
-        }
+        let mut datum = std::mem::MaybeUninit::<T>::uninit();
+        // SAFETY: status.as_mut_ptr() is a valid pointer to
+        // size_of::<T>() bytes of memory
+        unsafe { self.unsafe_recv(datum.as_mut_ptr() as *mut _, std::mem::size_of::<T>()) }?;
+        // SAFETY: libvchan_recv fully initialized the buffer, and a
+        // Castable struct can have any byte pattern.
+        unsafe { Ok(datum.assume_init()) }
     }
 }
 
