@@ -183,6 +183,15 @@ impl<T: VchanMock> RawMessageStream<T> {
         std::mem::replace(&mut self.did_reconnect, false)
     }
 
+    fn propagate(&mut self, e: std::io::Error) -> io::Result<Option<(Header, &[u8])>> {
+        self.state = ReadState::Error;
+        Err(e)
+    }
+
+    fn fail(&mut self, kind: ErrorKind, msg: &str) -> io::Result<Option<(Header, &[u8])>> {
+        self.propagate(Error::new(kind, msg))
+    }
+
     /// If a complete message has been buffered, returns `Ok(Some(msg))`.  If
     /// more data needs to arrive, returns `Ok(None)`.  If an error occurs,
     /// `Err` is returned, and the stream is placed in an error state.  If the
@@ -202,13 +211,10 @@ impl<T: VchanMock> RawMessageStream<T> {
                         self.state = ReadState::ReadingXConf;
                     }
                     vchan::Status::Disconnected => {
-                        self.state = ReadState::Error;
-                        return Err(Error::new(ErrorKind::Other, "vchan connection refused"));
+                        break self.fail(ErrorKind::Other, "vchan connection refused");
                     }
                 },
-                ReadState::Error => {
-                    return Err(Error::new(ErrorKind::Other, "Already in error state"))
-                }
+                ReadState::Error => break self.fail(ErrorKind::Other, "Already in error state"),
                 ReadState::ReadingXConf if ready >= SIZE_OF_XCONF => {
                     match self.vchan.recv(self.xconf.as_mut_bytes()) {
                         Ok(SIZE_OF_XCONF) => {
@@ -219,26 +225,19 @@ impl<T: VchanMock> RawMessageStream<T> {
                         Ok(x) if x > SIZE_OF_XCONF => {
                             unreachable!("libvchan_recv read too many bytes?")
                         }
-                        Ok(_) | Err(_) => {
-                            self.state = ReadState::Error;
-                            return Err(Error::new(ErrorKind::Other, "Bad read from vchan"));
-                        }
+                        Ok(_) => break self.fail(ErrorKind::Other, "Bad read from vchan"),
+                        Err(e) => break self.propagate(e),
                     }
                 }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
                     let mut header = <Header as Default>::default();
-                    match self.vchan.recv(header.as_mut_bytes()) {
-                        Ok(n) if n == size_of::<Header>() => ready -= size_of::<Header>(),
-                        Ok(_) => {
-                            self.state = ReadState::Error;
-                            break Err(Error::new(
+                    match self.vchan.recv(header.as_mut_bytes())? {
+                        n if n == size_of::<Header>() => ready -= size_of::<Header>(),
+                        _ => {
+                            return self.fail(
                                 ErrorKind::UnexpectedEof,
                                 "Failed to read a full message header",
-                            ));
-                        }
-                        Err(e) => {
-                            self.state = ReadState::Error;
-                            break Err(e);
+                            )
                         }
                     }
                     let untrusted_len = u32_to_usize(header.untrusted_len);
@@ -261,10 +260,8 @@ impl<T: VchanMock> RawMessageStream<T> {
                             self.state = ReadState::ReadingBody(header, 0)
                         }
                         Some(_) => {
-                            break Err(Error::new(
-                                ErrorKind::InvalidData,
-                                "Incoming packet has invalid size",
-                            ))
+                            break self
+                                .fail(ErrorKind::InvalidData, "Incoming packet has invalid size")
                         }
                     }
                 }
@@ -281,8 +278,7 @@ impl<T: VchanMock> RawMessageStream<T> {
                     self.buffer.resize(min_buf_size.max(self.buffer.len()), 0);
                     match self.recv(0..ready.min(untrusted_len.min(self.buffer.len())))? {
                         0 => {
-                            self.state = ReadState::Error;
-                            break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan"));
+                            break self.fail(ErrorKind::UnexpectedEof, "EOF on the vchan");
                         }
                         bytes_read if untrusted_len == bytes_read => {
                             self.state = ReadState::ReadingHeader
@@ -304,8 +300,7 @@ impl<T: VchanMock> RawMessageStream<T> {
                         self.state = ReadState::ReadingHeader;
                         break Ok(Some((header, &self.buffer[..])));
                     } else if bytes_read == 0 {
-                        self.state = ReadState::Error;
-                        break Err(Error::new(ErrorKind::UnexpectedEof, "EOF on the vchan"));
+                        break self.fail(ErrorKind::UnexpectedEof, "EOF on the vchan");
                     } else {
                         assert!(to_read > bytes_read);
                         self.state = ReadState::ReadingBody(header, read_so_far + bytes_read)
