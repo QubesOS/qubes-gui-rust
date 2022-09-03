@@ -21,7 +21,7 @@
 //! A wrapper around vchans that provides a write buffer.  Used to prevent
 //! deadlocks.
 
-use qubes_castable::Castable as _;
+use qubes_castable::Castable;
 use qubes_gui::Header;
 use std::collections::VecDeque;
 use std::io::{self, Error, ErrorKind, Read};
@@ -45,6 +45,11 @@ where
 {
     fn buffer_space(&self) -> usize;
     fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize>;
+    fn recv_struct<T: Castable + Default>(&mut self) -> io::Result<T> {
+        let mut v: T = Default::default();
+        assert_eq!(self.recv(v.as_mut_bytes())?, size_of::<T>());
+        Ok(v)
+    }
     fn send(&mut self, buf: &[u8]) -> io::Result<usize>;
     fn wait(&self);
     fn data_ready(&self) -> usize;
@@ -57,6 +62,9 @@ impl VchanMock for Option<vchan::Vchan> {
     }
     fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         <vchan::Vchan as Read>::read(self.as_mut().unwrap(), buf)
+    }
+    fn recv_struct<T: Castable>(&mut self) -> io::Result<T> {
+        vchan::Vchan::recv_struct(self.as_mut().unwrap())
     }
     fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
         vchan::Vchan::send(self.as_mut().unwrap(), buf)
@@ -202,7 +210,7 @@ impl<T: VchanMock> RawMessageStream<T> {
             self.state = ReadState::Error;
             return Err(e);
         }
-        let mut ready = self.vchan.data_ready();
+        let ready = self.vchan.data_ready();
         loop {
             match self.state {
                 ReadState::Connecting => match self.vchan.status() {
@@ -216,30 +224,17 @@ impl<T: VchanMock> RawMessageStream<T> {
                 },
                 ReadState::Error => break self.fail(ErrorKind::Other, "Already in error state"),
                 ReadState::ReadingXConf if ready >= SIZE_OF_XCONF => {
-                    match self.vchan.recv(self.xconf.as_mut_bytes()) {
-                        Ok(SIZE_OF_XCONF) => {
-                            self.state = ReadState::ReadingHeader;
-                            self.did_reconnect = true;
-                            break Ok(None);
-                        }
-                        Ok(x) if x > SIZE_OF_XCONF => {
-                            unreachable!("libvchan_recv read too many bytes?")
-                        }
-                        Ok(_) => break self.fail(ErrorKind::Other, "Bad read from vchan"),
+                    match self.vchan.recv_struct() {
+                        Ok(x) => self.xconf = x,
                         Err(e) => break self.propagate(e),
                     }
+                    self.state = ReadState::ReadingHeader;
                 }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
-                    let mut header = <Header as Default>::default();
-                    match self.vchan.recv(header.as_mut_bytes())? {
-                        n if n == size_of::<Header>() => ready -= size_of::<Header>(),
-                        _ => {
-                            return self.fail(
-                                ErrorKind::UnexpectedEof,
-                                "Failed to read a full message header",
-                            )
-                        }
-                    }
+                    let header: Header = match self.vchan.recv_struct() {
+                        Ok(x) => x,
+                        Err(e) => break self.propagate(e),
+                    };
                     let untrusted_len = u32_to_usize(header.untrusted_len);
                     match qubes_gui::msg_length_limits(header.ty) {
                         // Discard unknown messages, but see below comment
