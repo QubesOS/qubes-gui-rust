@@ -66,6 +66,7 @@ dependencies = [
 name = "vchan"
 version = "0.1.0"
 dependencies = [
+ "qubes-castable",
  "vchan-sys",
 ]
 

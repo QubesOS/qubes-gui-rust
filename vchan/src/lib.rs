@@ -160,6 +160,33 @@ impl Vchan {
             Ok(res as _)
         }
     }
+
+    /// Receive any [`Castable`] struct.  Blocks until the read is complete.
+    #[cfg(feature = "castable")]
+    pub fn recv_struct<T: qubes_castable::Castable>(&mut self) -> Result<T, Error> {
+        let mut status = std::mem::MaybeUninit::<T>::uninit();
+        // SAFETY: parameters are correct
+        let res = unsafe {
+            vchan_sys::libvchan_recv(
+                self.inner,
+                status.as_mut_ptr() as *mut _,
+                std::mem::size_of::<T>(),
+            )
+        };
+        if res == -1 {
+            Err(Error::last_os_error())
+        } else {
+            assert!(res >= 0, "received negative number of bytes?");
+            assert_eq!(
+                res as usize,
+                std::mem::size_of::<T>(),
+                "libvchan_recv short read?"
+            );
+            // SAFETY: libvchan_recv fully initialized the buffer, and a
+            // Castable struct can have any byte pattern.
+            unsafe { Ok(status.assume_init()) }
+        }
+    }
 }
 
 impl Write for Vchan {
