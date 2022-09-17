@@ -216,13 +216,13 @@ enum_const! {
     #[non_exhaustive]
     /// Message types
     pub enum Msg {
-        /// Daemon ⇒ agent: A key has been pressed
+        /// Daemon ⇒ agent: A key has been pressed or released.
         (MSG_KEYPRESS, Keypress) = 124,
-        /// Daemon ⇒ agent: A button has been pressed
+        /// Daemon ⇒ agent: A button has been pressed or released.
         (MSG_BUTTON, Button),
         /// Daemon ⇒ agent: Pointer has moved.
         (MSG_MOTION, Motion),
-        /// Daemon ⇒ agent: Pointer has crossed edge of window.
+        /// Daemon ⇒ agent: The pointer has entered or left a window.
         (MSG_CROSSING, Crossing),
         /// Daemon ⇒ agent: A window has just acquired focus.
         (MSG_FOCUS, Focus),
@@ -232,11 +232,11 @@ enum_const! {
         (MSG_CREATE, Create),
         /// Agent ⇒ daemon: Destroys a window.
         (MSG_DESTROY, Destroy),
-        /// Bidirectional: Map a window.
+        /// Bidirectional: A part of the window must be redrawn.
         (MSG_MAP, Map),
         /// Agent ⇒ daemon: Unmap a window
         (MSG_UNMAP, Unmap) = 133,
-        /// Bidirectional: Configure a window
+        /// Bidirectional: A window has been moved and/or resized.
         (MSG_CONFIGURE, Configure),
         /// Ask dom0 (only!) to map the given amount of memory into composition
         /// buffer.  Deprecated.

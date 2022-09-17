@@ -1,4 +1,4 @@
-use qubes_gui_agent_proto::DaemonToAgentEvent as Event;
+use qubes_gui_agent_proto::Event;
 use std::convert::TryInto;
 use std::os::unix::io::AsRawFd as _;
 use std::task::Poll;
@@ -57,23 +57,21 @@ fn main() -> std::io::Result<()> {
             }
         };
         match e {
-            Event::Motion { event } => println!("Motion event: {:?}", event),
-            Event::Crossing { event } => println!("Crossing event: {:?}", event),
+            Event::Motion(event) => println!("Motion event: {:?}", event),
+            Event::Crossing(event) => println!("Crossing event: {:?}", event),
             Event::Close => {
                 println!("Got a close event, exiting!");
                 return Ok(());
             }
-            Event::Keypress { event } => println!("Key pressed: {:?}", event),
-            Event::Button { event } => println!("Button event: {:?}", event),
-            Event::Copy => println!("clipboard data requested!"),
-            Event::Paste { untrusted_data } => {
+            Event::Keypress(event) => println!("Key pressed: {:?}", event),
+            Event::Button(event) => println!("Button event: {:?}", event),
+            Event::ClipboardReq => println!("clipboard data requested!"),
+            Event::ClipboardData { untrusted_data } => {
                 println!("clipboard paste, data {:?}", untrusted_data)
             }
-            Event::Keymap { new_keymap } => println!("New keymap: {:?}", new_keymap),
-            Event::Redraw { portion_to_redraw } => println!("Map event: {:?}", portion_to_redraw),
-            Event::Configure {
-                new_size_and_position,
-            } => {
+            Event::Keymap(new_keymap) => println!("New keymap: {:?}", new_keymap),
+            Event::Redraw(portion_to_redraw) => println!("Map event: {:?}", portion_to_redraw),
+            Event::Configure(new_size_and_position) => {
                 println!("Configure event: {:?}", new_size_and_position);
                 let rectangle = new_size_and_position.rectangle;
                 let qubes_gui::WindowSize { width, height } = rectangle.size;
@@ -99,8 +97,8 @@ fn main() -> std::io::Result<()> {
                     .send(&qubes_gui::ShmImage { rectangle }, window)
                     .unwrap()
             }
-            Event::Focus { event } => println!("Focus event: {:?}", event),
-            Event::WindowFlags { flags } => {
+            Event::Focus(event) => println!("Focus event: {:?}", event),
+            Event::WindowFlags(flags) => {
                 println!("Window manager flags have changed: {:?}", flags)
             }
             _ => println!("Got an unknown event!"),

@@ -51,70 +51,68 @@ pub enum Error {
     },
 }
 
-/// An event that a GUI agent must handle
+/// A GUI protocol event
 #[non_exhaustive]
-pub enum DaemonToAgentEvent<'a> {
-    /// The pointer has moved
-    Motion {
-        /// The contents of the event
-        event: qubes_gui::Motion,
-    },
-    /// The pointer has entered or left a window.
-    Crossing {
-        /// The contents of the event
-        event: qubes_gui::Crossing,
-    },
-    /// The user wishes to close a window
+pub enum Event<'a> {
+    /// Daemon ⇒ agent: A key has been pressed or released
+    Keypress(qubes_gui::Keypress),
+    /// Daemon ⇒ agent: A button has been pressed or released
+    Button(qubes_gui::Button),
+    /// Daemon ⇒ agent: The pointer has moved
+    Motion(qubes_gui::Motion),
+    /// Daemon ⇒ agent: The pointer has entered or left a window.
+    Crossing(qubes_gui::Crossing),
+    /// Daemon ⇒ agent: A window has just acquired focus.
+    Focus(qubes_gui::Focus),
+    /// Daemon ⇒ agent, obsolete.
+    Resize(qubes_gui::Rectangle),
+    /// Agent ⇒ daemon: Create a window
+    Create(qubes_gui::Create),
+    /// Bidirectional: Agent wishes to destroy a window, or daemon confirms
+    /// window destruction.
+    Destroy,
+    /// Bidirectional: The agent must redraw a portion of the display,
+    /// or the agent requests that a window be mapped on screen.
+    Redraw(qubes_gui::MapInfo),
+    /// Agent ⇒ daemon: Unmap a window
+    Unmap,
+    /// Bidrectional: A window has been moved and/or resized.
+    Configure(qubes_gui::Configure),
+    /// Ask dom0 (qubes_gui::only!) to map the given amount of memory into composition
+    /// buffer.  Deprecated.
+    MfnDump(qubes_gui::ShmCmd),
+    /// Agent ⇒ daemon: Redraw given area of screen.
+    ShmImage(qubes_gui::ShmImage),
+    /// Daemon ⇒ agent: The user wishes to close a window
     Close,
-    /// A key has been pressed or released
-    Keypress {
-        /// The contents of the event
-        event: qubes_gui::Keypress,
-    },
-    /// A button has been pressed or released
-    Button {
-        /// The contents of the event
-        event: qubes_gui::Button,
-    },
-    /// The GUI daemon has requested the contents of the clipboard.  The agent
-    /// is expected to send a [`MSG_CLIPBOARD_DATA`] message with the
-    /// requested data.
-    Copy,
-    /// Set the contents of the clipboard.
-    Paste {
-        /// The pasted data, which is not trusted
+    /// Daemon ⇒ agent: Request clipboard data.  The agent is expected to send a
+    /// [`MSG_CLIPBOARD_DATA`] message with the requested data.
+    ClipboardReq,
+    /// Agent ⇒ daemon: Set the contents of the clipboard.  The contents of the
+    /// clipboard are not trusted.
+    ClipboardData {
+        /// UNTRUSTED (qubes_gui::though valid UTF-8) clipboard data!
         untrusted_data: &'a str,
     },
-    /// The keymap has changed.
-    Keymap {
-        /// The new keymap
-        new_keymap: qubes_gui::KeymapNotify,
-    },
-    /// The agent must redraw a portion of the display
-    Redraw {
-        /// The portion of the window to redraw
-        portion_to_redraw: qubes_gui::MapInfo,
-    },
-    /// A window has been moved and/or resized.
-    Configure {
-        /// The contents of the event
-        new_size_and_position: qubes_gui::Configure,
-    },
-    /// A window has gained or lost focus
-    Focus {
-        /// The contents of the event
-        event: qubes_gui::Focus,
-    },
-    /// Window manager flags have changed
-    WindowFlags {
-        /// The contents of the event
-        flags: qubes_gui::WindowFlags,
-    },
-    /// GUI daemon confirms window destruciton; window ID may be reused
-    Destroy,
+    /// Agent ⇒ daemon: Set the title of a window.  Called MSG_WMNAME in C.
+    SetTitle(&'a str),
+    /// Daemon ⇒ agent: Update the keymap.
+    Keymap(qubes_gui::KeymapNotify),
+    /// Agent ⇒ daemon: Dock a window
+    Dock,
+    /// Agent ⇒ daemon: Set window manager hints.
+    WindowHints(qubes_gui::WindowHints),
+    /// Bidirectional: Set window manager flags.
+    WindowFlags(qubes_gui::WindowFlags),
+    /// Agent ⇒ daemon: Set window class.
+    WindowClass(qubes_gui::WMClass),
+    /// Agent ⇒ daemon: Send shared memory dump.
+    WindowDump(qubes_gui::WindowDumpHeader),
+    /// Agent ⇒ daemon: Set cursor type.
+    Cursor(qubes_gui::Cursor),
 }
 
-impl<'a> DaemonToAgentEvent<'a> {
+impl<'a> Event<'a> {
     /// Parse a Qubes OS GUI message from the GUI daemon
     ///
     /// # Panics
@@ -148,40 +146,22 @@ impl<'a> DaemonToAgentEvent<'a> {
             Err(_) => return Ok(None),
         };
         let res = match ty {
-            Msg::Motion => DaemonToAgentEvent::Motion {
-                event: Castable::from_bytes(body),
-            },
-            Msg::Crossing => DaemonToAgentEvent::Crossing {
-                event: Castable::from_bytes(body),
-            },
-            Msg::Close => DaemonToAgentEvent::Close,
-            Msg::Keypress => DaemonToAgentEvent::Keypress {
-                event: Castable::from_bytes(body),
-            },
-            Msg::Button => DaemonToAgentEvent::Button {
-                event: Castable::from_bytes(body),
-            },
-            Msg::ClipboardReq => DaemonToAgentEvent::Copy,
+            Msg::Motion => Event::Motion(Castable::from_bytes(body)),
+            Msg::Crossing => Event::Crossing(Castable::from_bytes(body)),
+            Msg::Close => Event::Close,
+            Msg::Keypress => Event::Keypress(Castable::from_bytes(body)),
+            Msg::Button => Event::Button(Castable::from_bytes(body)),
+            Msg::ClipboardReq => Event::ClipboardReq,
             Msg::ClipboardData => {
                 let untrusted_data = core::str::from_utf8(body).map_err(Error::BadUTF8)?;
-                DaemonToAgentEvent::Paste { untrusted_data }
+                Event::ClipboardData { untrusted_data }
             }
-            Msg::KeymapNotify => DaemonToAgentEvent::Keymap {
-                new_keymap: Castable::from_bytes(body),
-            },
-            Msg::Map => DaemonToAgentEvent::Redraw {
-                portion_to_redraw: Castable::from_bytes(body),
-            },
-            Msg::Unmap => DaemonToAgentEvent::Configure {
-                new_size_and_position: Castable::from_bytes(body),
-            },
-            Msg::Focus => DaemonToAgentEvent::Focus {
-                event: Castable::from_bytes(body),
-            },
-            Msg::WindowFlags => DaemonToAgentEvent::WindowFlags {
-                flags: Castable::from_bytes(body),
-            },
-            Msg::Destroy => DaemonToAgentEvent::Destroy,
+            Msg::KeymapNotify => Event::Keymap(Castable::from_bytes(body)),
+            Msg::Map => Event::Redraw(Castable::from_bytes(body)),
+            Msg::Unmap => Event::Configure(Castable::from_bytes(body)),
+            Msg::Focus => Event::Focus(Castable::from_bytes(body)),
+            Msg::WindowFlags => Event::WindowFlags(Castable::from_bytes(body)),
+            Msg::Destroy => Event::Destroy,
             // Agent ⇒ daemon messages
             Msg::Resize
             | Msg::Create
