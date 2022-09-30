@@ -24,7 +24,7 @@
 use qubes_castable::Castable;
 use qubes_gui::Header;
 use std::collections::VecDeque;
-use std::io::{self, Error, ErrorKind, Read};
+use std::io::{self, Error, ErrorKind};
 use std::mem::size_of;
 use std::ops::Range;
 
@@ -61,7 +61,7 @@ impl VchanMock for Option<vchan::Vchan> {
         vchan::Vchan::buffer_space(self.as_ref().unwrap())
     }
     fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        <vchan::Vchan as Read>::read(self.as_mut().unwrap(), buf)
+        vchan::Vchan::recv(self.as_mut().unwrap(), buf)
     }
     fn recv_struct<T: Castable>(&mut self) -> io::Result<T> {
         vchan::Vchan::recv_struct(self.as_mut().unwrap())
