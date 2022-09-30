@@ -210,8 +210,8 @@ impl<T: VchanMock> RawMessageStream<T> {
             self.state = ReadState::Error;
             return Err(e);
         }
-        let ready = self.vchan.data_ready();
         loop {
+            let ready = self.vchan.data_ready();
             match self.state {
                 ReadState::Connecting => match self.vchan.status() {
                     vchan::Status::Waiting => return Ok(None),
