@@ -104,6 +104,48 @@ impl Client {
         self.raw.write(msg)
     }
 
+    /// Change the flags of a window
+    pub fn set_window_flags(
+        &mut self,
+        window: qubes_gui::WindowID,
+        set: u32,
+        unset: u32,
+    ) -> io::Result<()> {
+        let buf: [u32; 5] = [
+            qubes_gui::MSG_WINDOW_FLAGS,
+            window.window.map(Into::into).unwrap_or(0),
+            8,
+            set,
+            unset,
+        ];
+        self.raw.write(buf.as_bytes())
+    }
+
+    /// Create a window
+    pub fn create(
+        &mut self,
+        window: qubes_gui::WindowID,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        parent: u32,
+        override_redirect: u32,
+    ) -> io::Result<()> {
+        let buf: [u32; 9] = [
+            qubes_gui::MSG_CREATE,
+            window.window.map(Into::into).unwrap_or(0),
+            24,
+            x,
+            y,
+            width,
+            height,
+            parent,
+            override_redirect,
+        ];
+        self.raw.write(buf.as_bytes())
+    }
+
     /// Acknowledge an event (as reported by poll(2), epoll(2), or similar).
     /// Must be called before performing any I/O.
     pub fn wait(&mut self) {
