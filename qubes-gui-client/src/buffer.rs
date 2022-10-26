@@ -205,7 +205,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     /// more data needs to arrive, returns `Ok(None)`.  If an error occurs,
     /// `Err` is returned, and the stream is placed in an error state.  If the
     /// stream is in an error state, all further functions will fail.
-    pub fn read_message(&mut self) -> io::Result<Option<(Header, &[u8])>> {
+    pub fn read_message<'a, 'b: 'a>(&'b mut self) -> io::Result<Option<(Header, &'a [u8])>> {
         const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConfVersion>();
         if let Err(e) = self.flush_pending_writes() {
             self.state = ReadState::Error;
@@ -213,6 +213,18 @@ impl<T: VchanMock> RawMessageStream<T> {
         }
         loop {
             let mut ready = self.vchan.data_ready();
+            let process_so_far = |s: &'a mut Self, header, ready: usize, read_so_far: usize| {
+                let to_read = s.buffer.len() - read_so_far;
+                if ready >= to_read {
+                    s.recv(read_so_far..s.buffer.len())?;
+                    s.state = ReadState::ReadingHeader;
+                    Ok(Some((header, &s.buffer[..])))
+                } else {
+                    s.recv(read_so_far..read_so_far + ready)?;
+                    s.state = ReadState::ReadingBody(header, read_so_far + ready);
+                    Ok(None)
+                }
+            };
             match self.state {
                 ReadState::Connecting => match self.vchan.status() {
                     vchan::Status::Waiting => return Ok(None),
@@ -248,16 +260,7 @@ impl<T: VchanMock> RawMessageStream<T> {
                             let len = untrusted_len;
                             // length was sanitized above
                             self.buffer.resize(len, 0);
-                            return Ok(if ready >= len {
-                                // Full message received
-                                self.recv(0..len)?;
-                                self.state = ReadState::ReadingHeader;
-                                Some((header, &self.buffer[..]))
-                            } else {
-                                self.recv(0..ready)?;
-                                self.state = ReadState::ReadingBody(header, ready);
-                                None
-                            });
+                            break process_so_far(self, header, ready, 0);
                         }
                         Some(_) => {
                             break self
@@ -284,19 +287,9 @@ impl<T: VchanMock> RawMessageStream<T> {
                         self.state = ReadState::Discard(untrusted_len - bytes_read)
                     }
                 }
+                ReadState::ReadingBody(_, _) if ready == 0 => break Ok(None),
                 ReadState::ReadingBody(header, read_so_far) => {
-                    if ready == 0 {
-                        break Ok(None);
-                    }
-                    let to_read = self.buffer.len() - read_so_far;
-                    if ready >= to_read {
-                        self.recv(read_so_far..self.buffer.len())?;
-                        self.state = ReadState::ReadingHeader;
-                        break Ok(Some((header, &self.buffer[..])));
-                    } else {
-                        self.recv(read_so_far..read_so_far + ready)?;
-                        self.state = ReadState::ReadingBody(header, read_so_far + ready);
-                    }
+                    break process_so_far(self, header, ready, read_so_far);
                 }
             }
         }
