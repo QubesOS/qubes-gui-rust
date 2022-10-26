@@ -44,13 +44,13 @@ where
     Self: Sized,
 {
     fn buffer_space(&self) -> usize;
-    fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize>;
+    fn recv(&mut self, buf: &mut [u8]) -> io::Result<()>;
     fn recv_struct<T: Castable + Default>(&mut self) -> io::Result<T> {
         let mut v: T = Default::default();
-        assert_eq!(self.recv(v.as_mut_bytes())?, size_of::<T>());
+        self.recv(v.as_mut_bytes())?;
         Ok(v)
     }
-    fn send(&mut self, buf: &[u8]) -> io::Result<usize>;
+    fn send(&mut self, buf: &[u8]) -> io::Result<()>;
     fn wait(&self);
     fn data_ready(&self) -> usize;
     fn status(&self) -> vchan::Status;
@@ -60,13 +60,13 @@ impl VchanMock for Option<vchan::Vchan> {
     fn buffer_space(&self) -> usize {
         vchan::Vchan::buffer_space(self.as_ref().unwrap())
     }
-    fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn recv(&mut self, buf: &mut [u8]) -> io::Result<()> {
         vchan::Vchan::recv(self.as_mut().unwrap(), buf)
     }
     fn recv_struct<T: Castable>(&mut self) -> io::Result<T> {
         vchan::Vchan::recv_struct(self.as_mut().unwrap())
     }
-    fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn send(&mut self, buf: &[u8]) -> io::Result<()> {
         vchan::Vchan::send(self.as_mut().unwrap(), buf)
     }
     fn wait(&self) {
@@ -124,7 +124,8 @@ impl<T: VchanMock> RawMessageStream<T> {
             Ok(0)
         } else {
             let to_write = space.min(slice.len());
-            vchan.send(&slice[..to_write])
+            vchan.send(&slice[..to_write])?;
+            Ok(to_write)
         }
     }
 
@@ -174,7 +175,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     }
 
     #[inline]
-    fn recv(&mut self, s: Range<usize>) -> io::Result<usize> {
+    fn recv(&mut self, s: Range<usize>) -> io::Result<()> {
         self.vchan.recv(&mut self.buffer[s]).map_err(|e| {
             self.state = ReadState::Error;
             e
@@ -275,14 +276,11 @@ impl<T: VchanMock> RawMessageStream<T> {
                     // Only enlarge the buffer, don't shrink it.  If it happens
                     // to be larger, use the extra space.
                     self.buffer.resize(min_buf_size.max(self.buffer.len()), 0);
-                    let bytes_read =
-                        self.recv(0..ready.min(untrusted_len.min(self.buffer.len())))?;
-                    if bytes_read == 0 {
-                        break self.fail(ErrorKind::UnexpectedEof, "EOF on the vchan");
-                    } else if untrusted_len == bytes_read {
+                    let bytes_read = ready.min(untrusted_len.min(self.buffer.len()));
+                    self.recv(0..bytes_read)?;
+                    if untrusted_len == bytes_read {
                         self.state = ReadState::ReadingHeader
                     } else {
-                        assert!(untrusted_len > bytes_read);
                         self.state = ReadState::Discard(untrusted_len - bytes_read)
                     }
                 }
@@ -290,17 +288,14 @@ impl<T: VchanMock> RawMessageStream<T> {
                     if ready == 0 {
                         break Ok(None);
                     }
-                    let buffer_len = self.buffer.len();
-                    let to_read = ready.min(buffer_len - read_so_far);
-                    let bytes_read = self.recv(read_so_far..read_so_far + to_read)?;
-                    if bytes_read == to_read {
+                    let to_read = self.buffer.len() - read_so_far;
+                    if ready >= to_read {
+                        self.recv(read_so_far..self.buffer.len())?;
                         self.state = ReadState::ReadingHeader;
                         break Ok(Some((header, &self.buffer[..])));
-                    } else if bytes_read == 0 {
-                        break self.fail(ErrorKind::UnexpectedEof, "EOF on the vchan");
                     } else {
-                        assert!(to_read > bytes_read);
-                        self.state = ReadState::ReadingBody(header, read_so_far + bytes_read)
+                        self.recv(read_so_far..read_so_far + ready)?;
+                        self.state = ReadState::ReadingBody(header, read_so_far + ready);
                     }
                 }
             }
@@ -403,16 +398,16 @@ mod tests {
         fn buffer_space(&self) -> usize {
             self.buffer_space
         }
-        fn send(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        fn send(&mut self, buffer: &[u8]) -> io::Result<()> {
             assert!(
                 buffer.len() <= self.buffer_space,
                 "Agents never write more space than is available"
             );
             self.write_buf.extend_from_slice(buffer);
             self.buffer_space -= buffer.len();
-            Ok(buffer.len())
+            Ok(())
         }
-        fn recv(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        fn recv(&mut self, buffer: &mut [u8]) -> io::Result<()> {
             assert!(
                 self.read_buf.len() >= self.data_ready
                     && self.read_buf.len() - self.data_ready >= self.cursor,
@@ -424,7 +419,7 @@ mod tests {
             );
             buffer.copy_from_slice(&self.read_buf[self.cursor..self.cursor + buffer.len()]);
             self.cursor += buffer.len();
-            Ok(buffer.len())
+            Ok(())
         }
     }
     #[test]

@@ -136,7 +136,7 @@ impl Vchan {
     }
 
     /// Write the entire buffer
-    pub fn send(&mut self, buffer: &[u8]) -> Result<usize, Error> {
+    pub fn send(&mut self, buffer: &[u8]) -> Result<(), Error> {
         let res =
             unsafe { vchan_sys::libvchan_send(self.inner, buffer.as_ptr() as _, buffer.len()) };
         if res == -1 {
@@ -144,7 +144,7 @@ impl Vchan {
         } else {
             assert!(res >= 0, "sent negative number of bytes?");
             assert_eq!(res as usize, buffer.len(), "libvchan_send short write?");
-            Ok(res as _)
+            Ok(())
         }
     }
 
@@ -157,7 +157,7 @@ impl Vchan {
     /// range be initialized, as this function will never read from it.  If this
     /// function returns successfully, the memory in the range *will* be
     /// initialized.
-    unsafe fn unsafe_recv(&mut self, ptr: *mut c_void, size: usize) -> Result<usize, Error> {
+    unsafe fn unsafe_recv(&mut self, ptr: *mut c_void, size: usize) -> Result<(), Error> {
         // SAFETY: by the function's precondition, ptr can validly have size
         // bytes written to it.  By Rust's type safety, self.inner is a valid
         // vchan.
@@ -167,12 +167,12 @@ impl Vchan {
         } else {
             assert!(res >= 0, "received negative number of bytes?");
             assert_eq!(res as usize, size, "libvchan_recv short read?");
-            Ok(res as _)
+            Ok(())
         }
     }
 
     /// Block until the given buffer is full
-    pub fn recv(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
+    pub fn recv(&mut self, buffer: &mut [u8]) -> Result<(), Error> {
         // SAFETY: buffer.as_mut_ptr() is a valid pointer to
         // buffer.len() bytes of memory
         unsafe { self.unsafe_recv(buffer.as_mut_ptr() as _, buffer.len()) }
