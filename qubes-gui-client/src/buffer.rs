@@ -211,7 +211,7 @@ impl<T: VchanMock> RawMessageStream<T> {
             return Err(e);
         }
         loop {
-            let ready = self.vchan.data_ready();
+            let mut ready = self.vchan.data_ready();
             match self.state {
                 ReadState::Connecting => match self.vchan.status() {
                     vchan::Status::Waiting => return Ok(None),
@@ -235,6 +235,7 @@ impl<T: VchanMock> RawMessageStream<T> {
                         Ok(x) => x,
                         Err(e) => break self.propagate(e),
                     };
+                    ready -= size_of::<Header>();
                     let untrusted_len = u32_to_usize(header.untrusted_len);
                     match qubes_gui::msg_length_limits(header.ty) {
                         // Discard unknown messages, but see below comment
@@ -246,14 +247,16 @@ impl<T: VchanMock> RawMessageStream<T> {
                             let len = untrusted_len;
                             // length was sanitized above
                             self.buffer.resize(len, 0);
-                            // If the message has an empty body, **do not wait for a body byte to
-                            // be sent**, as none will ever arrive.  This will cause the code to
-                            // run one message behind, but only for empty messages!
-                            if len == 0 {
+                            return Ok(if ready >= len {
+                                // Full message received
+                                self.recv(0..len)?;
                                 self.state = ReadState::ReadingHeader;
-                                break Ok(Some((header, &self.buffer[..])));
-                            }
-                            self.state = ReadState::ReadingBody(header, 0)
+                                Some((header, &self.buffer[..]))
+                            } else {
+                                self.recv(0..ready)?;
+                                self.state = ReadState::ReadingBody(header, ready);
+                                None
+                            });
                         }
                         Some(_) => {
                             break self
