@@ -275,17 +275,15 @@ impl<T: VchanMock> RawMessageStream<T> {
                     // Only enlarge the buffer, don't shrink it.  If it happens
                     // to be larger, use the extra space.
                     self.buffer.resize(min_buf_size.max(self.buffer.len()), 0);
-                    match self.recv(0..ready.min(untrusted_len.min(self.buffer.len())))? {
-                        0 => {
-                            break self.fail(ErrorKind::UnexpectedEof, "EOF on the vchan");
-                        }
-                        bytes_read if untrusted_len == bytes_read => {
-                            self.state = ReadState::ReadingHeader
-                        }
-                        bytes_read => {
-                            assert!(untrusted_len > bytes_read);
-                            self.state = ReadState::Discard(untrusted_len - bytes_read)
-                        }
+                    let bytes_read =
+                        self.recv(0..ready.min(untrusted_len.min(self.buffer.len())))?;
+                    if bytes_read == 0 {
+                        break self.fail(ErrorKind::UnexpectedEof, "EOF on the vchan");
+                    } else if untrusted_len == bytes_read {
+                        self.state = ReadState::ReadingHeader
+                    } else {
+                        assert!(untrusted_len > bytes_read);
+                        self.state = ReadState::Discard(untrusted_len - bytes_read)
                     }
                 }
                 ReadState::ReadingBody(header, read_so_far) => {
