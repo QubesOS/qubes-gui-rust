@@ -646,37 +646,76 @@ impl_message! {
     (Unmap, Msg::Unmap),
 }
 
-/// Gets the length limits of a message of a given type, or `None` for an
-/// unknown message (for which there are no limits).
-pub fn msg_length_limits(ty: u32) -> Option<core::ops::RangeInclusive<usize>> {
-    use core::mem::size_of;
-    Some(match Msg::try_from(ty).ok()? {
-        Msg::ClipboardData => 0..=MAX_CLIPBOARD_SIZE as _,
-        Msg::Button => size_of::<Button>()..=size_of::<Button>(),
-        Msg::Keypress => size_of::<Keypress>()..=size_of::<Keypress>(),
-        Msg::Motion => size_of::<Motion>()..=size_of::<Motion>(),
-        Msg::Crossing => size_of::<Crossing>()..=size_of::<Crossing>(),
-        Msg::Focus => size_of::<Focus>()..=size_of::<Focus>(),
-        Msg::Create => size_of::<Create>()..=size_of::<Create>(),
-        Msg::Destroy => 0..=0,
-        Msg::Map => size_of::<MapInfo>()..=size_of::<MapInfo>(),
-        Msg::Unmap => 0..=0,
-        Msg::Configure => size_of::<Configure>()..=size_of::<Configure>(),
-        Msg::MfnDump => 0..=4 * MAX_MFN_COUNT as usize,
-        Msg::ShmImage => size_of::<ShmImage>()..=size_of::<ShmImage>(),
-        Msg::Close => 0..=0,
-        Msg::ClipboardReq => 0..=0,
-        Msg::SetTitle => size_of::<WMName>()..=size_of::<WMName>(),
-        Msg::KeymapNotify => size_of::<KeymapNotify>()..=size_of::<KeymapNotify>(),
-        Msg::Dock => 0..=0,
-        Msg::WindowHints => size_of::<WindowHints>()..=size_of::<KeymapNotify>(),
-        Msg::WindowFlags => size_of::<WindowFlags>()..=size_of::<WindowFlags>(),
-        Msg::WindowClass => size_of::<WMClass>()..=size_of::<WMClass>(),
-        Msg::WindowDump => {
-            size_of::<WindowDumpHeader>()
-                ..=size_of::<WindowDumpHeader>() + size_of::<u32>() * MAX_GRANT_REFS_COUNT as usize
+/// Error indicating that the length of a message is bad
+#[derive(Debug)]
+pub struct BadLengthError {
+    /// The type of the bad message
+    pub ty: u32,
+    /// The length of the bad message
+    pub untrusted_len: u32,
+}
+
+impl core::fmt::Display for BadLengthError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Bad length {} for message of type {}",
+            self.untrusted_len, self.ty
+        )
+    }
+}
+
+impl Header {
+    /// Validate that the length of this header is correct
+    ///
+    /// # Returns
+    ///
+    /// Returns Ok(true) if the message is known and has a good length,
+    /// or Ok(false) for an unknown message.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the length is bad.
+    pub fn validate_length(&self) -> Result<bool, BadLengthError> {
+        const U32_SIZE: u32 = size_of::<u32>() as u32;
+        use core::mem::size_of;
+        let untrusted_len = self.untrusted_len;
+        if match self.ty {
+            MSG_CLIPBOARD_DATA => untrusted_len <= MAX_CLIPBOARD_SIZE,
+            MSG_BUTTON => untrusted_len == size_of::<Button>() as u32,
+            MSG_KEYPRESS => untrusted_len == size_of::<Keypress>() as u32,
+            MSG_MOTION => untrusted_len == size_of::<Motion>() as u32,
+            MSG_CROSSING => untrusted_len == size_of::<Crossing>() as u32,
+            MSG_FOCUS => untrusted_len == size_of::<Focus>() as u32,
+            MSG_CREATE => untrusted_len == size_of::<Create>() as u32,
+            MSG_DESTROY => untrusted_len == 0,
+            MSG_MAP => untrusted_len == size_of::<MapInfo>() as u32,
+            MSG_UNMAP => untrusted_len == 0,
+            MSG_CONFIGURE => untrusted_len == size_of::<Configure>() as u32,
+            MSG_MFNDUMP if untrusted_len % U32_SIZE != 0 => false,
+            MSG_MFNDUMP => untrusted_len / U32_SIZE <= MAX_MFN_COUNT,
+            MSG_SHMIMAGE => untrusted_len == size_of::<ShmImage>() as u32,
+            MSG_CLOSE | MSG_CLIPBOARD_REQ => untrusted_len == 0,
+            MSG_SET_TITLE => untrusted_len == size_of::<WMName>() as u32,
+            MSG_KEYMAP_NOTIFY => untrusted_len == size_of::<KeymapNotify>() as u32,
+            MSG_DOCK => untrusted_len == 0,
+            MSG_WINDOW_HINTS => untrusted_len == size_of::<WindowHints>() as u32,
+            MSG_WINDOW_FLAGS => untrusted_len == size_of::<WindowFlags>() as u32,
+            MSG_WINDOW_CLASS => untrusted_len == size_of::<WMClass>() as u32,
+            MSG_WINDOW_DUMP if untrusted_len < size_of::<WindowDumpHeader>() as u32 => false,
+            MSG_WINDOW_DUMP => {
+                let refs_len = untrusted_len - size_of::<WindowDumpHeader>() as u32;
+                (refs_len % U32_SIZE) == 0 && (refs_len / U32_SIZE) <= MAX_GRANT_REFS_COUNT
+            }
+            MSG_CURSOR => untrusted_len == size_of::<Cursor>() as u32,
+            _ => return Ok(false),
+        } {
+            Ok(true)
+        } else {
+            Err(BadLengthError {
+                ty: self.ty,
+                untrusted_len: self.untrusted_len,
+            })
         }
-        Msg::Cursor => size_of::<Cursor>()..=size_of::<Cursor>(),
-        Msg::Execute | Msg::Resize => return None,
-    })
+    }
 }

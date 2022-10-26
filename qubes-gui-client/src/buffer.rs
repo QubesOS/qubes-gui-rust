@@ -215,20 +215,24 @@ impl<T: VchanMock> RawMessageStream<T> {
             self.state = ReadState::Error;
             return Err(e);
         }
+        let process_so_far = |s: &'a mut Self, header, ready: usize, read_so_far: usize| {
+            let to_read = s.buffer.len() - read_so_far;
+            if ready >= to_read {
+                s.recv(read_so_far..s.buffer.len())?;
+                s.state = ReadState::ReadingHeader;
+                Ok(Some((header, &s.buffer[..])))
+            } else {
+                s.recv(read_so_far..read_so_far + ready)?;
+                s.state = ReadState::ReadingBody(header, read_so_far + ready);
+                Ok(None)
+            }
+        };
+        let set_discard = |s: usize| match s {
+            0 => ReadState::ReadingHeader,
+            s => ReadState::Discard(s),
+        };
         loop {
-            let mut ready = self.vchan.data_ready();
-            let process_so_far = |s: &'a mut Self, header, ready: usize, read_so_far: usize| {
-                let to_read = s.buffer.len() - read_so_far;
-                if ready >= to_read {
-                    s.recv(read_so_far..s.buffer.len())?;
-                    s.state = ReadState::ReadingHeader;
-                    Ok(Some((header, &s.buffer[..])))
-                } else {
-                    s.recv(read_so_far..read_so_far + ready)?;
-                    s.state = ReadState::ReadingBody(header, read_so_far + ready);
-                    Ok(None)
-                }
-            };
+            let ready = self.vchan.data_ready();
             match self.state {
                 ReadState::Connecting => match self.vchan.status() {
                     vchan::Status::Waiting => return Ok(None),
@@ -246,31 +250,22 @@ impl<T: VchanMock> RawMessageStream<T> {
                 }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
                     let header: Header = self.recv_struct()?;
-                    ready -= size_of::<Header>();
-                    let untrusted_len = u32_to_usize(header.untrusted_len);
-                    match qubes_gui::msg_length_limits(header.ty) {
-                        // Discard unknown messages, but see below comment
-                        // regarding empty ones.
-                        None if untrusted_len == 0 => continue,
-                        // Handle unknown message lengths.
-                        None => self.state = ReadState::Discard(untrusted_len),
-                        Some(allowed_lengths) if allowed_lengths.contains(&untrusted_len) => {
-                            let len = untrusted_len;
-                            // length was sanitized above
-                            self.buffer.resize(len, 0);
-                            break process_so_far(self, header, ready, 0);
+                    match header.validate_length() {
+                        Err(e) => {
+                            // bad length, bail out
+                            self.state = ReadState::Error;
+                            break Err(Error::new(ErrorKind::InvalidData, format!("{}", e)));
                         }
-                        Some(_) => {
-                            break self
-                                .fail(ErrorKind::InvalidData, "Incoming packet has invalid size")
+                        Ok(true) => {
+                            // length sanitized by validate_length()
+                            self.buffer.resize(u32_to_usize(header.untrusted_len), 0);
+                            break process_so_far(self, header, ready - size_of::<Header>(), 0);
                         }
+                        Ok(false) => self.state = set_discard(u32_to_usize(header.untrusted_len)),
                     }
                 }
                 ReadState::ReadingHeader | ReadState::ReadingXConf => break Ok(None),
                 ReadState::Discard(untrusted_len) => {
-                    if ready == 0 {
-                        break Ok(None); // Nothing to do
-                    }
                     // Limit the amount of memory used for large packets,
                     // as the length is untrusted.
                     let min_buf_size = untrusted_len.min(256);
@@ -279,13 +274,8 @@ impl<T: VchanMock> RawMessageStream<T> {
                     self.buffer.resize(min_buf_size.max(self.buffer.len()), 0);
                     let bytes_read = ready.min(untrusted_len.min(self.buffer.len()));
                     self.recv(0..bytes_read)?;
-                    if untrusted_len == bytes_read {
-                        self.state = ReadState::ReadingHeader
-                    } else {
-                        self.state = ReadState::Discard(untrusted_len - bytes_read)
-                    }
+                    self.state = set_discard(untrusted_len - bytes_read)
                 }
-                ReadState::ReadingBody(_, _) if ready == 0 => break Ok(None),
                 ReadState::ReadingBody(header, read_so_far) => {
                     break process_so_far(self, header, ready, read_so_far);
                 }
