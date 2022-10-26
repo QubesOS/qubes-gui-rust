@@ -360,7 +360,7 @@ qubes_castable::castable! {
 
     /// A GUI message as it appears on the wire.  All fields are in native byte
     /// order.
-    pub struct Header {
+    pub struct UntrustedHeader {
         /// Type of the message
         pub ty: u32,
         /// Window to which the message is directed.
@@ -665,18 +665,53 @@ impl core::fmt::Display for BadLengthError {
     }
 }
 
+/// A header that has been validated to be a valid message.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Header(UntrustedHeader);
+
 impl Header {
+    /// Get the type of the header as a u32.
+    ///
+    /// The type is guaranteed to be a valid message type.
+    pub fn ty(&self) -> u32 {
+        self.0.ty
+    }
+
+    /// Get the window ID of the header.  This has not been validated.
+    pub fn untrusted_window(&self) -> WindowID {
+        self.0.window
+    }
+
+    /// Get the length of the object represented by the Header.
+    ///
+    /// It is safe to use this length to e.g. allocate a buffer.
+    ///
+    /// The return value is guaranteed to be a valid length for the given
+    /// message type.
+    pub fn len(&self) -> usize {
+        self.0.untrusted_len as usize
+    }
+
+    /// Obtain the inner [`UntrustedHeader`].  Calling [`UntrustedHeader::validate_length`] on the
+    /// return value is guaranteed to return `Ok(Some)`.
+    pub fn inner(&self) -> UntrustedHeader {
+        self.0
+    }
+}
+
+impl UntrustedHeader {
     /// Validate that the length of this header is correct
     ///
     /// # Returns
     ///
-    /// Returns Ok(true) if the message is known and has a good length,
-    /// or Ok(false) for an unknown message.
+    /// If the message is good, returns a [`Header`] wrapped in `Ok(Some())`.
+    /// If the message is unknown, returns Ok(None).
     ///
     /// # Errors
     ///
-    /// Returns an error if the length is bad.
-    pub fn validate_length(&self) -> Result<bool, BadLengthError> {
+    /// Returns an error if the length is bad, or if the type of the message is
+    /// not valid in any supported protocol version.
+    pub fn validate_length(&self) -> Result<Option<Header>, BadLengthError> {
         const U32_SIZE: u32 = size_of::<u32>() as u32;
         use core::mem::size_of;
         let untrusted_len = self.untrusted_len;
@@ -708,9 +743,10 @@ impl Header {
                 (refs_len % U32_SIZE) == 0 && (refs_len / U32_SIZE) <= MAX_GRANT_REFS_COUNT
             }
             MSG_CURSOR => untrusted_len == size_of::<Cursor>() as u32,
-            _ => return Ok(false),
+            MSG_EXECUTE => false,
+            _ => return Ok(None),
         } {
-            Ok(true)
+            Ok(Some(Header(*self)))
         } else {
             Err(BadLengthError {
                 ty: self.ty,

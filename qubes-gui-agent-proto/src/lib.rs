@@ -118,14 +118,12 @@ impl<'a> Event<'a> {
     /// # Panics
     ///
     /// Will panic if the length of the message does not match the length in the
-    /// header.  May (or may not!) panic if the length of the message is not valid.
-    /// The caller is expected to have validated this earlier, using
-    /// [`qubes_gui::msg_length_limits`].
+    /// header.
     ///
     /// # Return
     ///
-    /// Returns `Ok(Some(window, event))` on success.  Returns `Ok(None)` if the
-    /// message number is not known.
+    /// Returns `Ok(Some(window, event))` on success.  Returns `Ok(None)` if
+    /// the message is one that should only be sent by an agent.
     ///
     /// # Errors
     ///
@@ -135,16 +133,12 @@ impl<'a> Event<'a> {
         body: &'a [u8],
     ) -> Result<Option<(qubes_gui::WindowID, Self)>, Error> {
         use qubes_gui::Msg;
-        assert_eq!(
-            header.untrusted_len.try_into(),
-            Ok(body.len()),
-            "Wrong body length provided!"
-        );
-        let window = header.window;
-        let ty = match header.ty.try_into() {
-            Ok(ty) => ty,
-            Err(_) => return Ok(None),
-        };
+        assert_eq!(header.len(), body.len(), "Wrong body length provided!");
+        let window = header.untrusted_window();
+        let ty = header
+            .ty()
+            .try_into()
+            .expect("validated by Header::validate_length()");
         let res = match ty {
             Msg::Motion => Event::Motion(Castable::from_bytes(body)),
             Msg::Crossing => Event::Crossing(Castable::from_bytes(body)),

@@ -22,7 +22,7 @@
 //! deadlocks.
 
 use qubes_castable::Castable;
-use qubes_gui::Header;
+use qubes_gui::{Header, UntrustedHeader};
 use std::collections::VecDeque;
 use std::io::{self, Error, ErrorKind};
 use std::mem::size_of;
@@ -249,19 +249,19 @@ impl<T: VchanMock> RawMessageStream<T> {
                     self.state = ReadState::ReadingHeader;
                 }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
-                    let header: Header = self.recv_struct()?;
+                    let header: UntrustedHeader = self.recv_struct()?;
                     match header.validate_length() {
                         Err(e) => {
                             // bad length, bail out
                             self.state = ReadState::Error;
                             break Err(Error::new(ErrorKind::InvalidData, format!("{}", e)));
                         }
-                        Ok(true) => {
+                        Ok(Some(header)) => {
                             // length sanitized by validate_length()
-                            self.buffer.resize(u32_to_usize(header.untrusted_len), 0);
+                            self.buffer.resize(header.len(), 0);
                             break process_so_far(self, header, ready - size_of::<Header>(), 0);
                         }
-                        Ok(false) => self.state = set_discard(u32_to_usize(header.untrusted_len)),
+                        Ok(None) => self.state = set_discard(u32_to_usize(header.untrusted_len)),
                     }
                 }
                 ReadState::ReadingHeader | ReadState::ReadingXConf => break Ok(None),

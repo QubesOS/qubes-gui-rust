@@ -64,7 +64,7 @@ impl Client {
             .len()
             .try_into()
             .expect("Message length must fit in a u32");
-        let header = qubes_gui::Header {
+        let header = qubes_gui::UntrustedHeader {
             ty,
             window,
             untrusted_len,
@@ -90,6 +90,10 @@ impl Client {
                 )
             }
         }
+        header
+            .validate_length()
+            .unwrap()
+            .expect("Sending unknown message!");
         // FIXME this is slow
         self.raw.write(header.as_bytes())?;
         self.raw.write(message)?;
