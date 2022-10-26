@@ -243,12 +243,13 @@ impl<T: VchanMock> RawMessageStream<T> {
                         // Handle unknown message lengths.
                         None => self.state = ReadState::Discard(untrusted_len),
                         Some(allowed_lengths) if allowed_lengths.contains(&untrusted_len) => {
+                            let len = untrusted_len;
                             // length was sanitized above
-                            self.buffer.resize(untrusted_len, 0);
+                            self.buffer.resize(len, 0);
                             // If the message has an empty body, **do not wait for a body byte to
                             // be sent**, as none will ever arrive.  This will cause the code to
                             // run one message behind, but only for empty messages!
-                            if untrusted_len == 0 {
+                            if len == 0 {
                                 self.state = ReadState::ReadingHeader;
                                 break Ok(Some((header, &self.buffer[..])));
                             }
