@@ -182,6 +182,14 @@ impl<T: VchanMock> RawMessageStream<T> {
         })
     }
 
+    #[inline]
+    fn recv_struct<U: Castable + Default>(&mut self) -> io::Result<U> {
+        self.vchan.recv_struct().map_err(|e| {
+            self.state = ReadState::Error;
+            e
+        })
+    }
+
     /// Acknowledge an event on the vchan.
     pub fn wait(&mut self) {
         self.vchan.wait()
@@ -192,13 +200,9 @@ impl<T: VchanMock> RawMessageStream<T> {
         std::mem::replace(&mut self.did_reconnect, false)
     }
 
-    fn propagate(&mut self, e: std::io::Error) -> io::Result<Option<(Header, &[u8])>> {
-        self.state = ReadState::Error;
-        Err(e)
-    }
-
     fn fail(&mut self, kind: ErrorKind, msg: &str) -> io::Result<Option<(Header, &[u8])>> {
-        self.propagate(Error::new(kind, msg))
+        self.state = ReadState::Error;
+        Err(Error::new(kind, msg))
     }
 
     /// If a complete message has been buffered, returns `Ok(Some(msg))`.  If
@@ -237,17 +241,11 @@ impl<T: VchanMock> RawMessageStream<T> {
                 },
                 ReadState::Error => break self.fail(ErrorKind::Other, "Already in error state"),
                 ReadState::ReadingXConf if ready >= SIZE_OF_XCONF => {
-                    match self.vchan.recv_struct() {
-                        Ok(x) => self.xconf = x,
-                        Err(e) => break self.propagate(e),
-                    }
+                    self.xconf = self.recv_struct()?;
                     self.state = ReadState::ReadingHeader;
                 }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
-                    let header: Header = match self.vchan.recv_struct() {
-                        Ok(x) => x,
-                        Err(e) => break self.propagate(e),
-                    };
+                    let header: Header = self.recv_struct()?;
                     ready -= size_of::<Header>();
                     let untrusted_len = u32_to_usize(header.untrusted_len);
                     match qubes_gui::msg_length_limits(header.ty) {
