@@ -666,7 +666,10 @@ impl core::fmt::Display for BadLengthError {
 }
 
 /// A header that has been validated to be a valid message.
+///
+/// Transmuting a [`Header`] to an [`UntrustedHeader`] is safe.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Header(UntrustedHeader);
 
 impl Header {
