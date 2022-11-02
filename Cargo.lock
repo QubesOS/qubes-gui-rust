@@ -14,10 +14,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "qubes-gui-agent"
-version = "0.1.0"
-
-[[package]]
 name = "qubes-gui-agent-proto"
 version = "0.1.0"
 dependencies = [

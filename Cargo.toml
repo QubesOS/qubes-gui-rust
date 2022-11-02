@@ -3,7 +3,6 @@ members = [
   "qubes-gui-client",
   "qubes-gui",
   "qubes-castable",
-  "qubes-gui-agent",
   "qubes-gui-agent-proto",
   "vchan",
   "vchan-sys",
