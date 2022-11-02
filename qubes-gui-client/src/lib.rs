@@ -26,7 +26,6 @@
 
 use qubes_castable::Castable as _;
 pub use qubes_gui;
-use std::collections::BTreeSet;
 use std::convert::TryInto;
 use std::io;
 use std::task::Poll;
@@ -39,8 +38,6 @@ use qubes_gui::Header;
 #[derive(Debug)]
 pub struct Client {
     raw: buffer::RawMessageStream<Option<vchan::Vchan>>,
-    present_windows: BTreeSet<qubes_gui::WindowID>,
-    agent: bool,
 }
 
 /// A buffer
@@ -90,27 +87,6 @@ impl Client {
             window,
             untrusted_len,
         };
-        if self.agent {
-            if header.ty == qubes_gui::Msg::Create as _ {
-                assert!(
-                    self.present_windows.insert(window),
-                    "Creating window {:?} already in map!",
-                    window
-                );
-            } else if header.ty == qubes_gui::Msg::Destroy as _ {
-                assert!(
-                    self.present_windows.remove(&window),
-                    "Trying to delete window {:?} not in map!",
-                    window
-                );
-            } else {
-                assert!(
-                    self.present_windows.contains(&window),
-                    "Sending message on nonexistant window {:?}!",
-                    window
-                )
-            }
-        }
         header
             .validate_length()
             .unwrap()
@@ -151,19 +127,13 @@ impl Client {
     pub fn daemon(domain: u16, xconf: qubes_gui::XConfVersion) -> io::Result<Self> {
         Ok(Self {
             raw: buffer::RawMessageStream::daemon(domain, xconf)?,
-            present_windows: Default::default(),
-            agent: false,
         })
     }
 
     /// Creates an agent instance
     pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConfVersion)> {
         let (raw, conf) = buffer::RawMessageStream::agent(domain)?;
-        let s = Self {
-            raw,
-            present_windows: Default::default(),
-            agent: true,
-        };
+        let s = Self { raw };
         Ok((s, conf))
     }
 
