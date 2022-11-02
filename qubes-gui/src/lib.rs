@@ -73,9 +73,12 @@
 //! such restriction.
 //!
 //! It is a protocol error for an agent to send a message to a window that does
-//! not exist, including a window which it has deleted.  Because of unavoidable
-//! race conditions, agents may recieve events for windows they have already
-//! destroyed.  Such messages MUST be ignored.
+//! not exist, including a window which it has deleted.  It is also a protocol
+//! error for an agent to try to create a window with an ID that is already in
+//! use.  Because of unavoidable race conditions, agents may recieve events for
+//! windows they have already destroyed.  Such messages MUST be ignored until
+//! the daemon acknowledges the window’s destruction.  Agents must not
+//! reuse a window ID until such an acknowledgement has been received.
 //!
 //! ## Unrecognized messages
 //!
