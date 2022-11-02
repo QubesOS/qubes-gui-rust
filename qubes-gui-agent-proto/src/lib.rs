@@ -86,12 +86,12 @@ pub enum Event<'a> {
     /// Daemon ⇒ agent: The user wishes to close a window
     Close,
     /// Daemon ⇒ agent: Request clipboard data.  The agent is expected to send a
-    /// [`MSG_CLIPBOARD_DATA`] message with the requested data.
+    /// [`qubes_gui::MSG_CLIPBOARD_DATA`] message with the requested data.
     ClipboardReq,
     /// Agent ⇒ daemon: Set the contents of the clipboard.  The contents of the
     /// clipboard are not trusted.
     ClipboardData {
-        /// UNTRUSTED (qubes_gui::though valid UTF-8) clipboard data!
+        /// UNTRUSTED (though valid UTF-8) clipboard data!
         untrusted_data: &'a str,
     },
     /// Agent ⇒ daemon: Set the title of a window.  Called MSG_WMNAME in C.

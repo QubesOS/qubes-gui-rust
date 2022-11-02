@@ -178,7 +178,7 @@ impl Vchan {
         unsafe { self.unsafe_recv(buffer.as_mut_ptr() as _, buffer.len()) }
     }
 
-    /// Receive any [`Castable`] struct.  Blocks until the read is complete.
+    /// Receive any [`qubes_castable::Castable`] struct.  Blocks until the read is complete.
     #[cfg(feature = "castable")]
     pub fn recv_struct<T: qubes_castable::Castable>(&mut self) -> Result<T, Error> {
         let mut datum = std::mem::MaybeUninit::<T>::uninit();
