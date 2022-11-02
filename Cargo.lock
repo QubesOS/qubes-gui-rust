@@ -3,27 +3,8 @@
 version = 3
 
 [[package]]
-name = "libc"
-version = "0.2.134"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = ""
-
-[[package]]
 name = "qubes-castable"
 version = "0.1.0"
-
-[[package]]
-name = "qubes-demo-agent"
-version = "0.1.0"
-dependencies = [
- "libc",
- "qubes-castable",
- "qubes-gui",
- "qubes-gui-agent-proto",
- "qubes-gui-client",
- "qubes-gui-gntalloc",
- "vchan",
-]
 
 [[package]]
 name = "qubes-gui"
@@ -51,15 +32,6 @@ dependencies = [
  "qubes-castable",
  "qubes-gui",
  "vchan",
-]
-
-[[package]]
-name = "qubes-gui-gntalloc"
-version = "0.1.0"
-dependencies = [
- "libc",
- "qubes-castable",
- "qubes-gui",
 ]
 
 [[package]]
