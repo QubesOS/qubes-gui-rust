@@ -105,7 +105,7 @@ impl Client {
     /// message type.  Otherwise, prefer [`Client::send_raw`], which at least
     /// ensures correct framing.
     pub fn send_raw_bytes(&mut self, msg: &[u8]) -> io::Result<()> {
-        self.raw.write(msg)
+        self.raw.write(msg).map_err(From::from)
     }
 
     /// Acknowledge an event (as reported by poll(2), epoll(2), or similar).
@@ -149,7 +149,7 @@ impl Client {
     /// Try to reconnect.  If this fails, the agent is no longer usable; future
     /// operations may panic.
     pub fn reconnect(&mut self) -> io::Result<()> {
-        self.raw.reconnect()
+        self.raw.reconnect().map_err(From::from)
     }
 
     /// Gets and clears the “did_reconnect” flag

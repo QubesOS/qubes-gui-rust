@@ -50,29 +50,29 @@ where
     Self: Sized,
 {
     fn buffer_space(&self) -> usize;
-    fn recv_into(&self, buf: &mut Vec<u8>, bytes: usize) -> io::Result<()>;
-    fn recv_struct<T: Castable + Default>(&self) -> io::Result<T>;
-    fn send(&self, buf: &[u8]) -> io::Result<()>;
+    fn recv_into(&self, buf: &mut Vec<u8>, bytes: usize) -> Result<(), vchan::Error>;
+    fn recv_struct<T: Castable + Default>(&self) -> Result<T, vchan::Error>;
+    fn send(&self, buf: &[u8]) -> Result<(), vchan::Error>;
     fn wait(&self);
     fn data_ready(&self) -> usize;
     fn status(&self) -> vchan::Status;
-    fn discard(&self, bytes: usize) -> io::Result<()>;
+    fn discard(&self, bytes: usize) -> Result<(), vchan::Error>;
 }
 
 impl VchanMock for Option<vchan::Vchan> {
-    fn discard(&self, bytes: usize) -> io::Result<()> {
+    fn discard(&self, bytes: usize) -> Result<(), vchan::Error> {
         vchan::Vchan::discard(self.as_ref().unwrap(), bytes)
     }
     fn buffer_space(&self) -> usize {
         vchan::Vchan::buffer_space(self.as_ref().unwrap())
     }
-    fn recv_into(&self, buf: &mut Vec<u8>, bytes: usize) -> io::Result<()> {
+    fn recv_into(&self, buf: &mut Vec<u8>, bytes: usize) -> Result<(), vchan::Error> {
         vchan::Vchan::recv_into(self.as_ref().unwrap(), buf, bytes)
     }
-    fn recv_struct<T: Castable>(&self) -> io::Result<T> {
+    fn recv_struct<T: Castable>(&self) -> Result<T, vchan::Error> {
         vchan::Vchan::recv_struct(self.as_ref().unwrap())
     }
-    fn send(&self, buf: &[u8]) -> io::Result<()> {
+    fn send(&self, buf: &[u8]) -> Result<(), vchan::Error> {
         vchan::Vchan::send(self.as_ref().unwrap(), buf)
     }
     fn wait(&self) {
@@ -124,7 +124,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     /// # Errors
     ///
     /// Fails if writing to the vchan fails.
-    fn write_slice(vchan: &mut T, slice: &[u8]) -> io::Result<usize> {
+    fn write_slice(vchan: &mut T, slice: &[u8]) -> Result<usize, vchan::Error> {
         let space = vchan.buffer_space();
         if space == 0 {
             Ok(0)
@@ -137,7 +137,7 @@ impl<T: VchanMock> RawMessageStream<T> {
 
     /// Write as much of the buffered data as possible without blocking.
     /// Returns the number of bytes successfully written.
-    fn flush_pending_writes(&mut self) -> io::Result<usize> {
+    fn flush_pending_writes(&mut self) -> Result<usize, vchan::Error> {
         let mut written = 0;
         loop {
             let (front, back) = self.queue.as_slices();
@@ -166,7 +166,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     /// # Errors
     ///
     /// Fails if there is an I/O error on the vchan.
-    pub fn write(&mut self, buf: &[u8]) -> io::Result<()> {
+    pub fn write(&mut self, buf: &[u8]) -> Result<(), vchan::Error> {
         self.flush_pending_writes()?;
         if !self.queue.is_empty() {
             self.queue.extend(buf);
@@ -181,7 +181,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     }
 
     #[inline]
-    fn recv_into(&mut self, bytes: usize) -> io::Result<()> {
+    fn recv_into(&mut self, bytes: usize) -> Result<(), vchan::Error> {
         self.vchan.recv_into(&mut self.buffer, bytes).map_err(|e| {
             self.state = ReadState::Error;
             e
@@ -189,7 +189,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     }
 
     #[inline]
-    fn recv_struct<U: Castable + Default>(&mut self) -> io::Result<U> {
+    fn recv_struct<U: Castable + Default>(&mut self) -> Result<U, vchan::Error> {
         self.vchan.recv_struct().map_err(|e| {
             self.state = ReadState::Error;
             e
@@ -219,7 +219,7 @@ impl<T: VchanMock> RawMessageStream<T> {
         const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConfVersion>();
         if let Err(e) = self.flush_pending_writes() {
             self.state = ReadState::Error;
-            return Err(e);
+            return Err(e.into());
         }
         let process_so_far = |s: &'a mut Self, header: Header, ready: usize| {
             let to_read = header.len() - s.buffer.len();
@@ -275,7 +275,7 @@ impl<T: VchanMock> RawMessageStream<T> {
                     match self.vchan.discard(untrusted_to_discard) {
                         Err(e) => {
                             self.state = ReadState::Error;
-                            break Err(e);
+                            break Err(e.into());
                         }
                         Ok(()) => self.state = set_discard(untrusted_len - untrusted_to_discard),
                     }
@@ -341,7 +341,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
         })
     }
 
-    pub fn reconnect(&mut self) -> io::Result<()> {
+    pub fn reconnect(&mut self) -> Result<(), vchan::Error> {
         self.vchan = None;
         self.vchan = Some(vchan::Vchan::server(
             self.domid,
@@ -384,7 +384,7 @@ mod tests {
         fn buffer_space(&self) -> usize {
             self.borrow().buffer_space
         }
-        fn send(&self, buffer: &[u8]) -> io::Result<()> {
+        fn send(&self, buffer: &[u8]) -> Result<(), vchan::Error> {
             let mut s = self.borrow_mut();
             assert!(
                 buffer.len() <= s.buffer_space,
@@ -394,7 +394,7 @@ mod tests {
             s.buffer_space -= buffer.len();
             Ok(())
         }
-        fn recv_into(&self, buffer: &mut Vec<u8>, bytes: usize) -> io::Result<()> {
+        fn recv_into(&self, buffer: &mut Vec<u8>, bytes: usize) -> Result<(), vchan::Error> {
             let mut s = self.borrow_mut();
             assert!(
                 s.read_buf.len() >= s.data_ready && s.read_buf.len() - s.data_ready >= s.cursor,
@@ -409,7 +409,7 @@ mod tests {
             s.data_ready -= buffer.len();
             Ok(())
         }
-        fn recv_struct<T: Castable + Default>(&self) -> io::Result<T> {
+        fn recv_struct<T: Castable + Default>(&self) -> Result<T, vchan::Error> {
             let mut s = self.borrow_mut();
             let mut v: T = Default::default();
             assert!(
@@ -430,7 +430,7 @@ mod tests {
             s.data_ready -= b.len();
             Ok(v)
         }
-        fn discard(&self, bytes: usize) -> io::Result<()> {
+        fn discard(&self, bytes: usize) -> Result<(), vchan::Error> {
             let mut s = self.borrow_mut();
             assert!(
                 s.read_buf.len() >= s.data_ready && s.read_buf.len() - s.data_ready >= s.cursor,

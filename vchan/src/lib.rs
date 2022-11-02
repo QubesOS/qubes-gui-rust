@@ -21,7 +21,7 @@
  */
 #![forbid(clippy::all, improper_ctypes, improper_ctypes_definitions)]
 
-use std::io::{Error, ErrorKind, Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::os::{raw::c_int, raw::c_void, unix::prelude::RawFd};
 
 /// Status of the channel
@@ -33,6 +33,39 @@ pub enum Status {
     Connected,
     /// Server initialized, waiting for client to connect
     Waiting,
+}
+
+/// Error on a vchan
+#[derive(Debug, Clone)]
+pub enum Error {
+    /// Failure allocating memory
+    OutOfMemory(std::collections::TryReserveError),
+    /// Vchan read error
+    Read,
+    /// Vchan write error
+    Write,
+    /// Cannot listen
+    CannotListen,
+    /// Cannot connect
+    CannotConnect,
+}
+
+impl From<Error> for std::io::Error {
+    fn from(t: Error) -> Self {
+        Self::new(ErrorKind::Other, format!("{}", t))
+    }
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::Read => write!(f, "Error during vchan read"),
+            Error::Write => write!(f, "Error during vchan write"),
+            Error::CannotListen => write!(f, "Cannot listen on vchan"),
+            Error::CannotConnect => write!(f, "Cannot connect to vchan"),
+            Error::OutOfMemory(e) => write!(f, "{}", e),
+        }
+    }
 }
 
 /// A wrapper around a Qubes vchan, which is a stream-oriented, inter-qube
@@ -72,7 +105,7 @@ impl Vchan {
                 vchan_sys::libvchan_server_init(domain.into(), port, read_min, write_min)
             };
             if ptr.is_null() {
-                Err(Error::last_os_error())
+                Err(Error::CannotListen)
             } else {
                 Ok(Vchan { inner: ptr })
             }
@@ -86,7 +119,7 @@ impl Vchan {
         fn client_inner(domain: u16, port: c_int) -> Result<Vchan, Error> {
             let ptr = unsafe { vchan_sys::libvchan_client_init(domain.into(), port) };
             if ptr.is_null() {
-                Err(Error::last_os_error())
+                Err(Error::CannotConnect)
             } else {
                 Ok(Vchan { inner: ptr })
             }
@@ -137,10 +170,16 @@ impl Vchan {
 
     /// Write the entire buffer
     pub fn send(&self, buffer: &[u8]) -> Result<(), Error> {
+        assert!(
+            buffer.len() <= c_int::MAX as usize,
+            "sending {} bytes but INT_MAX is {}",
+            buffer.len(),
+            c_int::MAX
+        );
         let res =
             unsafe { vchan_sys::libvchan_send(self.inner, buffer.as_ptr() as _, buffer.len()) };
         if res == -1 {
-            Err(Error::last_os_error())
+            Err(Error::Write)
         } else {
             assert!(res >= 0, "sent negative number of bytes?");
             assert_eq!(res as usize, buffer.len(), "libvchan_send short write?");
@@ -163,7 +202,7 @@ impl Vchan {
         // vchan.
         let res = vchan_sys::libvchan_recv(self.inner, ptr, size);
         if res == -1 {
-            Err(Error::last_os_error())
+            Err(Error::Read)
         } else {
             assert!(res >= 0, "received negative number of bytes?");
             assert_eq!(res as usize, size, "libvchan_recv short read?");
@@ -202,9 +241,7 @@ impl Vchan {
     /// Returns an error if the capacity overflows, allocating more memory for
     /// the buffer fails, or there is an error reading from the vchan.
     pub fn recv_into(&self, buffer: &mut Vec<u8>, bytes: usize) -> Result<(), Error> {
-        buffer
-            .try_reserve(bytes)
-            .map_err(|_| ErrorKind::OutOfMemory)?;
+        buffer.try_reserve(bytes).map_err(Error::OutOfMemory)?;
         let buffer_len = buffer.len();
         // SAFETY: the unused bytes part of a vector can safely be written to,
         // if no Drop impls need to be called.  The necessary capacity was reserved above.
@@ -228,28 +265,28 @@ impl Vchan {
 }
 
 impl Write for Vchan {
-    fn write(&mut self, buffer: &[u8]) -> Result<usize, Error> {
+    fn write(&mut self, buffer: &[u8]) -> Result<usize, std::io::Error> {
         let res =
             unsafe { vchan_sys::libvchan_write(self.inner, buffer.as_ptr() as _, buffer.len()) };
         if res == -1 {
-            Err(Error::last_os_error())
+            Err(std::io::Error::new(ErrorKind::Other, "vchan write error"))
         } else {
             assert!(res >= 0, "wrote negative number of bytes?");
             Ok(res as _)
         }
     }
 
-    fn flush(&mut self) -> Result<(), Error> {
+    fn flush(&mut self) -> Result<(), std::io::Error> {
         Ok(())
     }
 }
 
 impl Read for Vchan {
-    fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
+    fn read(&mut self, buffer: &mut [u8]) -> Result<usize, std::io::Error> {
         let res =
             unsafe { vchan_sys::libvchan_read(self.inner, buffer.as_mut_ptr() as _, buffer.len()) };
         if res == -1 {
-            Err(Error::last_os_error())
+            Err(std::io::Error::new(ErrorKind::Other, "vchan read error"))
         } else {
             assert!(res >= 0, "read negative number of bytes?");
             Ok(res as _)
