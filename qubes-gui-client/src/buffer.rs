@@ -406,6 +406,7 @@ mod tests {
             );
             buffer.extend_from_slice(&s.read_buf[s.cursor..s.cursor + bytes]);
             s.cursor += buffer.len();
+            s.data_ready -= buffer.len();
             Ok(())
         }
         fn recv_struct<T: Castable + Default>(&self) -> io::Result<T> {
@@ -413,15 +414,20 @@ mod tests {
             let mut v: T = Default::default();
             assert!(
                 s.read_buf.len() >= s.data_ready && s.read_buf.len() - s.data_ready >= s.cursor,
-                "mock vchan internal bounds error"
+                "mock vchan internal bounds error: len is {} and ready is {} but cursor is {}",
+                s.read_buf.len(),
+                s.data_ready,
+                s.cursor,
             );
             let b = v.as_mut_bytes();
+            eprintln!("Reading {} bytes with {} ready", b.len(), s.data_ready);
             assert!(
                 b.len() <= s.data_ready,
                 "Agents never read more data than is available"
             );
             b.copy_from_slice(&s.read_buf[s.cursor..s.cursor + b.len()]);
             s.cursor += b.len();
+            s.data_ready -= b.len();
             Ok(v)
         }
         fn discard(&self, bytes: usize) -> io::Result<()> {
@@ -435,6 +441,7 @@ mod tests {
                 "Agents never read more data than is available"
             );
             s.cursor += bytes;
+            s.data_ready -= bytes;
             Ok(())
         }
     }
@@ -450,7 +457,7 @@ mod tests {
         let mut under_test = RawMessageStream::<RefCell<MockVchan>> {
             vchan: RefCell::new(mock_vchan),
             queue: Default::default(),
-            state: ReadState::ReadingHeader,
+            state: ReadState::Connecting,
             buffer: vec![],
             did_reconnect: false,
             xconf: Default::default(),
@@ -497,9 +504,27 @@ mod tests {
         under_test.write(b" gamma delta").expect("write works");
         under_test.write(b" gamma delta").expect("write works");
         under_test.vchan.borrow_mut().buffer_space = 8;
-        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
+        under_test
+            .vchan
+            .borrow_mut()
+            .read_buf
+            .extend_from_slice(&[0; size_of::<qubes_gui::XConfVersion>()]);
+        under_test.vchan.borrow_mut().data_ready = 12;
+
+        assert!(under_test.vchan.data_ready() < size_of::<qubes_gui::XConfVersion>());
+        assert!(matches!(under_test.state, ReadState::ReadingXConf));
+        assert_eq!(
+            under_test.read_message().unwrap(),
+            None,
+            "not enough bytes to read"
+        );
+        assert_eq!(under_test.vchan.borrow().data_ready, 12);
+        assert!(matches!(under_test.state, ReadState::ReadingXConf));
+        under_test.vchan.borrow_mut().data_ready += 8;
         under_test.vchan.borrow_mut().buffer_space = 8;
         assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
+        assert_eq!(under_test.vchan.borrow().data_ready, 0);
+        assert!(matches!(under_test.state, ReadState::ReadingHeader));
         under_test.vchan.borrow_mut().buffer_space = 8;
         assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
         under_test.vchan.borrow_mut().buffer_space = 8;
