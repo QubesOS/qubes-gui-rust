@@ -21,7 +21,7 @@
  */
 #![forbid(clippy::all, improper_ctypes, improper_ctypes_definitions)]
 
-use std::io::{Error, Read, Write};
+use std::io::{Error, ErrorKind, Read, Write};
 use std::os::{raw::c_int, raw::c_void, unix::prelude::RawFd};
 
 /// Status of the channel
@@ -136,7 +136,7 @@ impl Vchan {
     }
 
     /// Write the entire buffer
-    pub fn send(&mut self, buffer: &[u8]) -> Result<(), Error> {
+    pub fn send(&self, buffer: &[u8]) -> Result<(), Error> {
         let res =
             unsafe { vchan_sys::libvchan_send(self.inner, buffer.as_ptr() as _, buffer.len()) };
         if res == -1 {
@@ -157,7 +157,7 @@ impl Vchan {
     /// range be initialized, as this function will never read from it.  If this
     /// function returns successfully, the memory in the range *will* be
     /// initialized.
-    unsafe fn unsafe_recv(&mut self, ptr: *mut c_void, size: usize) -> Result<(), Error> {
+    unsafe fn unsafe_recv(&self, ptr: *mut c_void, size: usize) -> Result<(), Error> {
         // SAFETY: by the function's precondition, ptr can validly have size
         // bytes written to it.  By Rust's type safety, self.inner is a valid
         // vchan.
@@ -172,15 +172,51 @@ impl Vchan {
     }
 
     /// Block until the given buffer is full
-    pub fn recv(&mut self, buffer: &mut [u8]) -> Result<(), Error> {
+    pub fn recv(&self, buffer: &mut [u8]) -> Result<(), Error> {
         // SAFETY: buffer.as_mut_ptr() is a valid pointer to
         // buffer.len() bytes of memory
         unsafe { self.unsafe_recv(buffer.as_mut_ptr() as _, buffer.len()) }
     }
 
+    /// Discard data from the vchan.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from the vchan failed.
+    pub fn discard(&self, mut bytes: usize) -> Result<(), Error> {
+        use std::mem::{size_of, MaybeUninit};
+        let mut buf: MaybeUninit<[u8; 256]> = MaybeUninit::uninit();
+        let _: [u8; size_of::<MaybeUninit<[u8; 256]>>()] = [0u8; 256];
+        while bytes > 0 {
+            let to_read = 256.min(bytes);
+            unsafe { self.unsafe_recv(&mut buf as *mut _ as *mut _, to_read)? }
+            bytes -= to_read;
+        }
+        Ok(())
+    }
+
+    /// Extend the vector with data from the vchan.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the capacity overflows, allocating more memory for
+    /// the buffer fails, or there is an error reading from the vchan.
+    pub fn recv_into(&self, buffer: &mut Vec<u8>, bytes: usize) -> Result<(), Error> {
+        buffer
+            .try_reserve(bytes)
+            .map_err(|_| ErrorKind::OutOfMemory)?;
+        let buffer_len = buffer.len();
+        // SAFETY: the unused bytes part of a vector can safely be written to,
+        // if no Drop impls need to be called.  The necessary capacity was reserved above.
+        unsafe { self.unsafe_recv(buffer.as_mut_ptr().add(buffer_len) as _, bytes)? }
+        // SAFETY: the above code will fill the whole buffer on success
+        unsafe { buffer.set_len(buffer_len + bytes) }
+        Ok(())
+    }
+
     /// Receive any [`qubes_castable::Castable`] struct.  Blocks until the read is complete.
     #[cfg(feature = "castable")]
-    pub fn recv_struct<T: qubes_castable::Castable>(&mut self) -> Result<T, Error> {
+    pub fn recv_struct<T: qubes_castable::Castable>(&self) -> Result<T, Error> {
         let mut datum = std::mem::MaybeUninit::<T>::uninit();
         // SAFETY: status.as_mut_ptr() is a valid pointer to size_of::<T>()
         // bytes of memory, and unsafe_recv() is okay with uninitialized memory.

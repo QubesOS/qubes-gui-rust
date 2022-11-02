@@ -26,7 +26,6 @@ use qubes_gui::{Header, UntrustedHeader};
 use std::collections::VecDeque;
 use std::io::{self, Error, ErrorKind};
 use std::mem::size_of;
-use std::ops::Range;
 
 /// Protocol state
 #[derive(Debug)]
@@ -38,7 +37,7 @@ enum ReadState {
     /// Reading a message header
     ReadingHeader,
     /// Reading a message body
-    ReadingBody { header: Header, read_so_far: usize },
+    ReadingBody { header: Header },
     /// Discarding data from an unknown message
     Discard(usize),
     /// Something went wrong.  Terminal state.
@@ -51,30 +50,30 @@ where
     Self: Sized,
 {
     fn buffer_space(&self) -> usize;
-    fn recv(&mut self, buf: &mut [u8]) -> io::Result<()>;
-    fn recv_struct<T: Castable + Default>(&mut self) -> io::Result<T> {
-        let mut v: T = Default::default();
-        self.recv(v.as_mut_bytes())?;
-        Ok(v)
-    }
-    fn send(&mut self, buf: &[u8]) -> io::Result<()>;
+    fn recv_into(&self, buf: &mut Vec<u8>, bytes: usize) -> io::Result<()>;
+    fn recv_struct<T: Castable + Default>(&self) -> io::Result<T>;
+    fn send(&self, buf: &[u8]) -> io::Result<()>;
     fn wait(&self);
     fn data_ready(&self) -> usize;
     fn status(&self) -> vchan::Status;
+    fn discard(&self, bytes: usize) -> io::Result<()>;
 }
 
 impl VchanMock for Option<vchan::Vchan> {
+    fn discard(&self, bytes: usize) -> io::Result<()> {
+        vchan::Vchan::discard(self.as_ref().unwrap(), bytes)
+    }
     fn buffer_space(&self) -> usize {
         vchan::Vchan::buffer_space(self.as_ref().unwrap())
     }
-    fn recv(&mut self, buf: &mut [u8]) -> io::Result<()> {
-        vchan::Vchan::recv(self.as_mut().unwrap(), buf)
+    fn recv_into(&self, buf: &mut Vec<u8>, bytes: usize) -> io::Result<()> {
+        vchan::Vchan::recv_into(self.as_ref().unwrap(), buf, bytes)
     }
-    fn recv_struct<T: Castable>(&mut self) -> io::Result<T> {
-        vchan::Vchan::recv_struct(self.as_mut().unwrap())
+    fn recv_struct<T: Castable>(&self) -> io::Result<T> {
+        vchan::Vchan::recv_struct(self.as_ref().unwrap())
     }
-    fn send(&mut self, buf: &[u8]) -> io::Result<()> {
-        vchan::Vchan::send(self.as_mut().unwrap(), buf)
+    fn send(&self, buf: &[u8]) -> io::Result<()> {
+        vchan::Vchan::send(self.as_ref().unwrap(), buf)
     }
     fn wait(&self) {
         vchan::Vchan::wait(self.as_ref().unwrap())
@@ -182,8 +181,8 @@ impl<T: VchanMock> RawMessageStream<T> {
     }
 
     #[inline]
-    fn recv(&mut self, s: Range<usize>) -> io::Result<()> {
-        self.vchan.recv(&mut self.buffer[s]).map_err(|e| {
+    fn recv_into(&mut self, bytes: usize) -> io::Result<()> {
+        self.vchan.recv_into(&mut self.buffer, bytes).map_err(|e| {
             self.state = ReadState::Error;
             e
         })
@@ -222,18 +221,14 @@ impl<T: VchanMock> RawMessageStream<T> {
             self.state = ReadState::Error;
             return Err(e);
         }
-        let process_so_far = |s: &'a mut Self, header: Header, ready: usize, read_so_far: usize| {
-            let to_read = header.len() - read_so_far;
+        let process_so_far = |s: &'a mut Self, header: Header, ready: usize| {
+            let to_read = header.len() - s.buffer.len();
+            s.recv_into(to_read.min(ready))?;
             if ready >= to_read {
-                s.recv(read_so_far..s.buffer.len())?;
                 s.state = ReadState::ReadingHeader;
                 Ok(Some((header, &s.buffer[..])))
             } else {
-                s.recv(read_so_far..read_so_far + ready)?;
-                s.state = ReadState::ReadingBody {
-                    header,
-                    read_so_far: read_so_far + ready,
-                };
+                s.state = ReadState::ReadingBody { header };
                 Ok(None)
             }
         };
@@ -259,6 +254,8 @@ impl<T: VchanMock> RawMessageStream<T> {
                     self.state = ReadState::ReadingHeader;
                 }
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
+                    // Reset buffer to 0 bytes
+                    self.buffer.clear();
                     let header: UntrustedHeader = self.recv_struct()?;
                     match header.validate_length() {
                         Err(e) => {
@@ -267,30 +264,24 @@ impl<T: VchanMock> RawMessageStream<T> {
                             break Err(Error::new(ErrorKind::InvalidData, format!("{}", e)));
                         }
                         Ok(Some(header)) => {
-                            // length sanitized by validate_length()
-                            self.buffer.resize(header.len(), 0);
-                            break process_so_far(self, header, ready - size_of::<Header>(), 0);
+                            break process_so_far(self, header, ready - size_of::<Header>());
                         }
                         Ok(None) => self.state = set_discard(u32_to_usize(header.untrusted_len)),
                     }
                 }
                 ReadState::ReadingHeader | ReadState::ReadingXConf => break Ok(None),
                 ReadState::Discard(untrusted_len) => {
-                    // Limit the amount of memory used for large packets,
-                    // as the length is untrusted.
-                    let min_buf_size = untrusted_len.min(256);
-                    // Only enlarge the buffer, don't shrink it.  If it happens
-                    // to be larger, use the extra space.
-                    self.buffer.resize(min_buf_size.max(self.buffer.len()), 0);
-                    let bytes_read = ready.min(untrusted_len.min(self.buffer.len()));
-                    self.recv(0..bytes_read)?;
-                    self.state = set_discard(untrusted_len - bytes_read)
+                    let untrusted_to_discard = ready.min(untrusted_len);
+                    match self.vchan.discard(untrusted_to_discard) {
+                        Err(e) => {
+                            self.state = ReadState::Error;
+                            break Err(e);
+                        }
+                        Ok(()) => self.state = set_discard(untrusted_len - untrusted_to_discard),
+                    }
                 }
-                ReadState::ReadingBody {
-                    header,
-                    read_so_far,
-                } => {
-                    break process_so_far(self, header, ready, read_so_far);
+                ReadState::ReadingBody { header } => {
+                    break process_so_far(self, header, ready);
                 }
             }
         }
@@ -373,6 +364,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
     struct MockVchan {
         read_buf: Vec<u8>,
         write_buf: Vec<u8>,
@@ -381,38 +373,68 @@ mod tests {
         cursor: usize,
     }
 
-    impl VchanMock for MockVchan {
+    impl VchanMock for RefCell<MockVchan> {
         fn wait(&self) {}
         fn status(&self) -> vchan::Status {
             vchan::Status::Connected
         }
         fn data_ready(&self) -> usize {
-            self.data_ready
+            self.borrow().data_ready
         }
         fn buffer_space(&self) -> usize {
-            self.buffer_space
+            self.borrow().buffer_space
         }
-        fn send(&mut self, buffer: &[u8]) -> io::Result<()> {
+        fn send(&self, buffer: &[u8]) -> io::Result<()> {
+            let mut s = self.borrow_mut();
             assert!(
-                buffer.len() <= self.buffer_space,
+                buffer.len() <= s.buffer_space,
                 "Agents never write more space than is available"
             );
-            self.write_buf.extend_from_slice(buffer);
-            self.buffer_space -= buffer.len();
+            s.write_buf.extend_from_slice(buffer);
+            s.buffer_space -= buffer.len();
             Ok(())
         }
-        fn recv(&mut self, buffer: &mut [u8]) -> io::Result<()> {
+        fn recv_into(&self, buffer: &mut Vec<u8>, bytes: usize) -> io::Result<()> {
+            let mut s = self.borrow_mut();
             assert!(
-                self.read_buf.len() >= self.data_ready
-                    && self.read_buf.len() - self.data_ready >= self.cursor,
+                s.read_buf.len() >= s.data_ready && s.read_buf.len() - s.data_ready >= s.cursor,
                 "mock vchan internal bounds error"
             );
             assert!(
-                buffer.len() <= self.data_ready,
+                bytes <= s.data_ready,
                 "Agents never read more data than is available"
             );
-            buffer.copy_from_slice(&self.read_buf[self.cursor..self.cursor + buffer.len()]);
-            self.cursor += buffer.len();
+            buffer.extend_from_slice(&s.read_buf[s.cursor..s.cursor + bytes]);
+            s.cursor += buffer.len();
+            Ok(())
+        }
+        fn recv_struct<T: Castable + Default>(&self) -> io::Result<T> {
+            let mut s = self.borrow_mut();
+            let mut v: T = Default::default();
+            assert!(
+                s.read_buf.len() >= s.data_ready && s.read_buf.len() - s.data_ready >= s.cursor,
+                "mock vchan internal bounds error"
+            );
+            let b = v.as_mut_bytes();
+            assert!(
+                b.len() <= s.data_ready,
+                "Agents never read more data than is available"
+            );
+            b.copy_from_slice(&s.read_buf[s.cursor..s.cursor + b.len()]);
+            s.cursor += b.len();
+            Ok(v)
+        }
+        fn discard(&self, bytes: usize) -> io::Result<()> {
+            let mut s = self.borrow_mut();
+            assert!(
+                s.read_buf.len() >= s.data_ready && s.read_buf.len() - s.data_ready >= s.cursor,
+                "mock vchan internal bounds error"
+            );
+            assert!(
+                bytes <= s.data_ready,
+                "Agents never read more data than is available"
+            );
+            s.cursor += bytes;
             Ok(())
         }
     }
@@ -425,8 +447,8 @@ mod tests {
             data_ready: 0,
             cursor: 0,
         };
-        let mut under_test = RawMessageStream::<MockVchan> {
-            vchan: mock_vchan,
+        let mut under_test = RawMessageStream::<RefCell<MockVchan>> {
+            vchan: RefCell::new(mock_vchan),
             queue: Default::default(),
             state: ReadState::ReadingHeader,
             buffer: vec![],
@@ -437,50 +459,54 @@ mod tests {
         under_test.write(b"test1").unwrap();
         assert_eq!(under_test.queue.len(), 5, "message queued");
         assert_eq!(under_test.queue, *b"test1");
-        assert_eq!(under_test.vchan.write_buf, b"", "no bytes written");
-        under_test.vchan.buffer_space = 3;
+        assert_eq!(under_test.vchan.borrow().write_buf, b"", "no bytes written");
+        under_test.vchan.borrow_mut().buffer_space = 3;
         under_test
             .flush_pending_writes()
             .expect("drained successfully");
         assert_eq!(under_test.queue.len(), 2);
         assert_eq!(under_test.queue, *b"t1");
-        assert_eq!(under_test.vchan.write_buf, b"tes");
-        assert_eq!(under_test.vchan.buffer_space, 0);
-        under_test.vchan.buffer_space = 4;
+        assert_eq!(under_test.vchan.borrow().write_buf, b"tes");
+        assert_eq!(under_test.vchan.borrow().buffer_space, 0);
+        under_test.vchan.borrow_mut().buffer_space = 4;
         under_test.write(b"\0another alpha").unwrap();
         assert_eq!(under_test.queue.len(), 12);
-        assert_eq!(under_test.vchan.write_buf, b"test1\0a");
+        assert_eq!(under_test.vchan.borrow().write_buf, b"test1\0a");
         assert_eq!(
             under_test.queue, *b"nother alpha",
             "only the minimum number of bytes stored"
         );
-        under_test.vchan.buffer_space = 2;
+        under_test.vchan.borrow_mut().buffer_space = 2;
         under_test
             .flush_pending_writes()
             .expect("drained successfully");
-        assert_eq!(under_test.vchan.write_buf, b"test1\0ano");
-        assert_eq!(under_test.vchan.buffer_space, 0);
-        under_test.vchan.buffer_space = 7;
+        assert_eq!(under_test.vchan.borrow().write_buf, b"test1\0ano");
+        assert_eq!(under_test.vchan.borrow().buffer_space, 0);
+        under_test.vchan.borrow_mut().buffer_space = 7;
         assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
-        assert_eq!(under_test.vchan.buffer_space, 0);
-        assert_eq!(under_test.vchan.write_buf, b"test1\0another al");
+        assert_eq!(under_test.vchan.borrow().buffer_space, 0);
+        assert_eq!(under_test.vchan.borrow().write_buf, b"test1\0another al");
         assert_eq!(under_test.queue.len(), 3);
         assert_eq!(under_test.queue, *b"pha");
-        under_test.vchan.buffer_space = 8;
+        under_test.vchan.borrow_mut().buffer_space = 8;
         under_test.write(b" gamma delta").expect("write works");
-        assert_eq!(under_test.vchan.write_buf, b"test1\0another alpha gamm");
+        assert_eq!(
+            under_test.vchan.borrow().write_buf,
+            b"test1\0another alpha gamm"
+        );
         under_test.write(b" gamma delta").expect("write works");
         under_test.write(b" gamma delta").expect("write works");
-        under_test.vchan.buffer_space = 8;
+        under_test.vchan.borrow_mut().buffer_space = 8;
         assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
-        under_test.vchan.buffer_space = 8;
+        under_test.vchan.borrow_mut().buffer_space = 8;
         assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
-        under_test.vchan.buffer_space = 8;
+        under_test.vchan.borrow_mut().buffer_space = 8;
         assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
-        under_test.vchan.buffer_space = 8;
+        under_test.vchan.borrow_mut().buffer_space = 8;
         assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
         assert_eq!(
-            under_test.vchan.write_buf, b"test1\0another alpha gamma delta gamma delta gamma delta",
+            under_test.vchan.borrow().write_buf,
+            b"test1\0another alpha gamma delta gamma delta gamma delta",
             "correct data written"
         );
     }
