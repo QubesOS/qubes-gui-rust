@@ -28,13 +28,20 @@ use std::io::{self, Error, ErrorKind};
 use std::mem::size_of;
 use std::ops::Range;
 
+/// Protocol state
 #[derive(Debug)]
 enum ReadState {
+    /// Currently connecting
     Connecting,
+    /// Reading X11 configuration
     ReadingXConf,
+    /// Reading a message header
     ReadingHeader,
-    ReadingBody(Header, usize),
+    /// Reading a message body
+    ReadingBody { header: Header, read_so_far: usize },
+    /// Discarding data from an unknown message
     Discard(usize),
+    /// Something went wrong.  Terminal state.
     Error,
 }
 
@@ -223,7 +230,10 @@ impl<T: VchanMock> RawMessageStream<T> {
                 Ok(Some((header, &s.buffer[..])))
             } else {
                 s.recv(read_so_far..read_so_far + ready)?;
-                s.state = ReadState::ReadingBody(header, read_so_far + ready);
+                s.state = ReadState::ReadingBody {
+                    header,
+                    read_so_far: read_so_far + ready,
+                };
                 Ok(None)
             }
         };
@@ -276,7 +286,10 @@ impl<T: VchanMock> RawMessageStream<T> {
                     self.recv(0..bytes_read)?;
                     self.state = set_discard(untrusted_len - bytes_read)
                 }
-                ReadState::ReadingBody(header, read_so_far) => {
+                ReadState::ReadingBody {
+                    header,
+                    read_so_far,
+                } => {
                     break process_so_far(self, header, ready, read_so_far);
                 }
             }
