@@ -215,8 +215,8 @@ impl<T: VchanMock> RawMessageStream<T> {
             self.state = ReadState::Error;
             return Err(e);
         }
-        let process_so_far = |s: &'a mut Self, header, ready: usize, read_so_far: usize| {
-            let to_read = s.buffer.len() - read_so_far;
+        let process_so_far = |s: &'a mut Self, header: Header, ready: usize, read_so_far: usize| {
+            let to_read = header.len() - read_so_far;
             if ready >= to_read {
                 s.recv(read_so_far..s.buffer.len())?;
                 s.state = ReadState::ReadingHeader;
