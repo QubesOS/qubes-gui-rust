@@ -117,7 +117,25 @@ fn u32_to_usize(i: u32) -> usize {
     i as usize
 }
 
-impl<T: VchanMock> RawMessageStream<T> {
+#[derive(Debug)]
+pub(crate) struct ClaimableBuffer<'a, T: VchanMock> {
+    inner: &'a mut RawMessageStream<T>,
+    hdr: Header,
+}
+
+impl<'a, T: VchanMock> ClaimableBuffer<'a, T> {
+    pub(crate) fn hdr(&self) -> Header {
+        self.hdr
+    }
+    pub(crate) fn body(&self) -> &[u8] {
+        &self.inner.buffer[..]
+    }
+    pub(crate) fn take(self) -> Vec<u8> {
+        std::mem::replace(&mut self.inner.buffer, vec![])
+    }
+}
+
+impl<T: VchanMock + 'static> RawMessageStream<T> {
     /// Attempts to write as much of `slice` as possible to the `vchan`.  Never
     /// blocks.  Returns the number of bytes written.
     ///
@@ -206,7 +224,11 @@ impl<T: VchanMock> RawMessageStream<T> {
         std::mem::replace(&mut self.did_reconnect, false)
     }
 
-    fn fail(&mut self, kind: ErrorKind, msg: &str) -> io::Result<Option<(Header, &[u8])>> {
+    fn fail(
+        &mut self,
+        kind: ErrorKind,
+        msg: &str,
+    ) -> io::Result<Option<ClaimableBuffer<'static, T>>> {
         self.state = ReadState::Error;
         Err(Error::new(kind, msg))
     }
@@ -215,7 +237,7 @@ impl<T: VchanMock> RawMessageStream<T> {
     /// more data needs to arrive, returns `Ok(None)`.  If an error occurs,
     /// `Err` is returned, and the stream is placed in an error state.  If the
     /// stream is in an error state, all further functions will fail.
-    pub fn read_message<'a, 'b: 'a>(&'b mut self) -> io::Result<Option<(Header, &'a [u8])>> {
+    pub fn read_message<'a, 'b: 'a>(&'b mut self) -> io::Result<Option<ClaimableBuffer<'a, T>>> {
         const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConfVersion>();
         if let Err(e) = self.flush_pending_writes() {
             self.state = ReadState::Error;
@@ -226,7 +248,10 @@ impl<T: VchanMock> RawMessageStream<T> {
             s.recv_into(to_read.min(ready))?;
             if ready >= to_read {
                 s.state = ReadState::ReadingHeader;
-                Ok(Some((header, &s.buffer[..])))
+                Ok(Some(ClaimableBuffer {
+                    hdr: header,
+                    inner: s,
+                }))
             } else {
                 s.state = ReadState::ReadingBody { header };
                 Ok(None)
@@ -490,7 +515,10 @@ mod tests {
         assert_eq!(under_test.vchan.borrow().write_buf, b"test1\0ano");
         assert_eq!(under_test.vchan.borrow().buffer_space, 0);
         under_test.vchan.borrow_mut().buffer_space = 7;
-        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
+        assert!(
+            under_test.read_message().unwrap().is_none(),
+            "no bytes to read"
+        );
         assert_eq!(under_test.vchan.borrow().buffer_space, 0);
         assert_eq!(under_test.vchan.borrow().write_buf, b"test1\0another al");
         assert_eq!(under_test.queue.len(), 3);
@@ -513,22 +541,30 @@ mod tests {
 
         assert!(under_test.vchan.data_ready() < size_of::<qubes_gui::XConfVersion>());
         assert!(matches!(under_test.state, ReadState::ReadingXConf));
-        assert_eq!(
-            under_test.read_message().unwrap(),
-            None,
+        assert!(
+            under_test.read_message().unwrap().is_none(),
             "not enough bytes to read"
         );
         assert_eq!(under_test.vchan.borrow().data_ready, 12);
         assert!(matches!(under_test.state, ReadState::ReadingXConf));
         under_test.vchan.borrow_mut().data_ready += 8;
         under_test.vchan.borrow_mut().buffer_space = 8;
-        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
+        assert!(
+            under_test.read_message().unwrap().is_none(),
+            "no bytes to read"
+        );
         assert_eq!(under_test.vchan.borrow().data_ready, 0);
         assert!(matches!(under_test.state, ReadState::ReadingHeader));
         under_test.vchan.borrow_mut().buffer_space = 8;
-        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
+        assert!(
+            under_test.read_message().unwrap().is_none(),
+            "no bytes to read"
+        );
         under_test.vchan.borrow_mut().buffer_space = 8;
-        assert_eq!(under_test.read_message().unwrap(), None, "no bytes to read");
+        assert!(
+            under_test.read_message().unwrap().is_none(),
+            "no bytes to read"
+        );
         assert_eq!(
             under_test.vchan.borrow().write_buf,
             b"test1\0another alpha gamma delta gamma delta gamma delta",
