@@ -198,6 +198,11 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
     ///
     /// Fails if there is an I/O error on the vchan.
     pub fn write(&mut self, buf: &[u8]) -> Result<(), vchan::Error> {
+        #[cfg(not(test))]
+        match self.state {
+            ReadState::Error | ReadState::Connecting | ReadState::Negotiating => return Ok(()),
+            _ => {}
+        }
         self.flush_pending_writes()?;
         if !self.queue.is_empty() {
             self.queue.extend(buf);
@@ -280,7 +285,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                 ReadState::Connecting => match self.vchan.status() {
                     vchan::Status::Waiting => return Ok(None),
                     vchan::Status::Connected => match self.kind {
-                        Kind::Agent { .. } => {
+                        Kind::Agent => {
                             assert!(self.vchan.buffer_space() >= 4, "vchans have larger buffers");
                             match self.vchan.send(qubes_gui::PROTOCOL_VERSION.as_bytes()) {
                                 Ok(()) => self.state = ReadState::Negotiating,
@@ -290,7 +295,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                                 }
                             }
                         }
-                        Kind::Daemon { .. } => self.state = ReadState::Negotiating,
+                        Kind::Daemon => self.state = ReadState::Negotiating,
                     },
                     vchan::Status::Disconnected => {
                         break self.fail(ErrorKind::Other, "vchan connection refused");
@@ -307,7 +312,8 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                             && daemon_minor >= 4
                         {
                             self.xconf = xconf;
-                            self.state = ReadState::ReadingHeader
+                            self.state = ReadState::ReadingHeader;
+                            self.did_reconnect = true;
                         } else {
                             self.state = ReadState::Error;
                             break Err(Error::new(ErrorKind::InvalidData,
@@ -390,7 +396,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
         Ok(Self {
             vchan: Some(vchan),
             queue: Default::default(),
-            state: ReadState::ReadingHeader,
+            state: ReadState::Connecting,
             buffer: vec![],
             did_reconnect: false,
             domid: domain,
