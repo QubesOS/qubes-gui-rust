@@ -116,8 +116,15 @@ fn vchan_writes() {
         buffer: vec![],
         did_reconnect: false,
         xconf: Default::default(),
+        kind: Kind::Agent,
         domid: 0,
     };
+    under_test.vchan.borrow_mut().buffer_space = 4;
+    assert!(
+        under_test.read_message().unwrap().is_none(),
+        "no bytes to read"
+    );
+    under_test.vchan.borrow_mut().write_buf.clear();
     under_test.write(b"test1").unwrap();
     assert_eq!(under_test.queue.len(), 5, "message queued");
     assert_eq!(under_test.queue, *b"test1");
@@ -162,21 +169,25 @@ fn vchan_writes() {
     under_test.write(b" gamma delta").expect("write works");
     under_test.write(b" gamma delta").expect("write works");
     under_test.vchan.borrow_mut().buffer_space = 8;
+    let version = qubes_gui::XConfVersion {
+        version: 0x10004,
+        xconf: Default::default(),
+    };
     under_test
         .vchan
         .borrow_mut()
         .read_buf
-        .extend_from_slice(&[0; size_of::<qubes_gui::XConfVersion>()]);
+        .extend_from_slice(&version.as_bytes());
     under_test.vchan.borrow_mut().data_ready = 12;
 
     assert!(under_test.vchan.data_ready() < size_of::<qubes_gui::XConfVersion>());
-    assert!(matches!(under_test.state, ReadState::ReadingXConf));
+    assert!(matches!(under_test.state, ReadState::Negotiating));
     assert!(
         under_test.read_message().unwrap().is_none(),
         "not enough bytes to read"
     );
     assert_eq!(under_test.vchan.borrow().data_ready, 12);
-    assert!(matches!(under_test.state, ReadState::ReadingXConf));
+    assert!(matches!(under_test.state, ReadState::Negotiating));
     under_test.vchan.borrow_mut().data_ready += 8;
     under_test.vchan.borrow_mut().buffer_space = 8;
     assert!(

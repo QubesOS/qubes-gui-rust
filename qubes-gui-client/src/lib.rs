@@ -131,10 +131,10 @@ impl Client {
     }
 
     /// Creates an agent instance
-    pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConfVersion)> {
-        let (raw, conf) = buffer::RawMessageStream::agent(domain)?;
-        let s = Self { raw };
-        Ok((s, conf))
+    pub fn agent(domain: u16) -> io::Result<Self> {
+        Ok(Self {
+            raw: buffer::RawMessageStream::agent(domain)?,
+        })
     }
 
     /// Try to reconnect.  If this fails, the agent is no longer usable; future

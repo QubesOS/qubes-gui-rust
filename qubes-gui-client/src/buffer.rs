@@ -34,8 +34,8 @@ mod tests;
 enum ReadState {
     /// Currently connecting
     Connecting,
-    /// Reading X11 configuration
-    ReadingXConf,
+    /// Negotiating protocol version
+    Negotiating,
     /// Reading a message header
     ReadingHeader,
     /// Reading a message body
@@ -90,6 +90,15 @@ impl VchanMock for Option<vchan::Vchan> {
     }
 }
 
+/// The kind of a state machine
+#[derive(Debug, Clone, Copy)]
+pub enum Kind {
+    /// An agent instance
+    Agent,
+    /// A daemon instance
+    Daemon,
+}
+
 #[derive(Debug)]
 pub(crate) struct RawMessageStream<T: VchanMock> {
     /// Vchan
@@ -106,6 +115,8 @@ pub(crate) struct RawMessageStream<T: VchanMock> {
     xconf: qubes_gui::XConfVersion,
     /// Peer domain ID
     domid: u16,
+    /// Agent or daemon?
+    kind: Kind,
 }
 
 #[inline(always)]
@@ -268,25 +279,79 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
             match self.state {
                 ReadState::Connecting => match self.vchan.status() {
                     vchan::Status::Waiting => return Ok(None),
-                    vchan::Status::Connected => {
-                        self.state = ReadState::ReadingXConf;
-                    }
+                    vchan::Status::Connected => match self.kind {
+                        Kind::Agent { .. } => {
+                            assert!(self.vchan.buffer_space() >= 4, "vchans have larger buffers");
+                            match self.vchan.send(qubes_gui::PROTOCOL_VERSION.as_bytes()) {
+                                Ok(()) => self.state = ReadState::Negotiating,
+                                Err(e) => {
+                                    self.state = ReadState::Error;
+                                    break Err(e.into());
+                                }
+                            }
+                        }
+                        Kind::Daemon { .. } => self.state = ReadState::Negotiating,
+                    },
                     vchan::Status::Disconnected => {
                         break self.fail(ErrorKind::Other, "vchan connection refused");
                     }
                 },
                 ReadState::Error => break self.fail(ErrorKind::Other, "Already in error state"),
-                ReadState::ReadingXConf if ready >= SIZE_OF_XCONF => {
-                    self.xconf = self.recv_struct()?;
-                    self.state = ReadState::ReadingHeader;
-                }
+                ReadState::Negotiating => match self.kind {
+                    Kind::Agent if ready >= SIZE_OF_XCONF => {
+                        let xconf: qubes_gui::XConfVersion = self.recv_struct()?;
+                        let (daemon_major, daemon_minor) =
+                            (xconf.version >> 16, xconf.version & 0xFFFF);
+                        if qubes_gui::PROTOCOL_VERSION_MAJOR == daemon_major
+                            && qubes_gui::PROTOCOL_VERSION_MINOR >= daemon_minor
+                            && daemon_minor >= 4
+                        {
+                            self.xconf = xconf;
+                            self.state = ReadState::ReadingHeader
+                        } else {
+                            self.state = ReadState::Error;
+                            break Err(Error::new(ErrorKind::InvalidData,
+                                            format!(
+                                                "Version negotiation failed: their version is {}.{} but ours is {}.{}",
+                                                daemon_major, daemon_minor,
+                                                qubes_gui::PROTOCOL_VERSION_MAJOR,
+                                                qubes_gui::PROTOCOL_VERSION_MINOR,
+                                                )));
+                        }
+                    }
+                    Kind::Daemon if ready >= 4 => {
+                        let version: u32 = self.recv_struct()?;
+                        let (major, minor) = (version >> 16, version & 0xFFFF);
+                        if major == qubes_gui::PROTOCOL_VERSION_MAJOR {
+                            let version = version.min(qubes_gui::PROTOCOL_VERSION_MINOR);
+                            self.xconf.version = version;
+                            if version >= 4 {
+                                self.vchan.send(self.xconf.as_bytes())?
+                            } else {
+                                self.vchan.send(self.xconf.xconf.as_bytes())?
+                            }
+                            self.state = ReadState::ReadingHeader
+                        } else {
+                            self.state = ReadState::Error;
+                            return Err(Error::new(
+                                    ErrorKind::InvalidData,
+                                    format!(
+                                        "Unsupported version from agent: daemon supports {}.{} but agent sent {}.{}",
+                                        qubes_gui::PROTOCOL_VERSION_MAJOR,
+                                        qubes_gui::PROTOCOL_VERSION_MINOR,
+                                        major,
+                                        minor,
+                                    )));
+                        }
+                    }
+                    Kind::Agent | Kind::Daemon => break Ok(None),
+                },
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
                     // Reset buffer to 0 bytes
                     self.buffer.clear();
                     let header: UntrustedHeader = self.recv_struct()?;
                     match header.validate_length() {
                         Err(e) => {
-                            // bad length, bail out
                             self.state = ReadState::Error;
                             break Err(Error::new(ErrorKind::InvalidData, format!("{}", e)));
                         }
@@ -296,7 +361,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                         Ok(None) => self.state = set_discard(u32_to_usize(header.untrusted_len)),
                     }
                 }
-                ReadState::ReadingHeader | ReadState::ReadingXConf => break Ok(None),
+                ReadState::ReadingHeader => break Ok(None),
                 ReadState::Discard(untrusted_len) => {
                     let untrusted_to_discard = ready.min(untrusted_len);
                     match self.vchan.discard(untrusted_to_discard) {
@@ -320,40 +385,22 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
 }
 
 impl RawMessageStream<Option<vchan::Vchan>> {
-    pub fn agent(domain: u16) -> io::Result<(Self, qubes_gui::XConfVersion)> {
+    pub fn agent(domain: u16) -> io::Result<Self> {
         let vchan = vchan::Vchan::server(domain, qubes_gui::LISTENING_PORT.into(), 4096, 4096)?;
-        loop {
-            match vchan.status() {
-                vchan::Status::Waiting => vchan.wait(),
-                vchan::Status::Connected => break,
-                vchan::Status::Disconnected => {
-                    return Err(Error::new(
-                        ErrorKind::Other,
-                        "Didn’t get a connection from the GUI daemon",
-                    ))
-                }
-            }
-        }
-        let mut res = Self {
+        Ok(Self {
             vchan: Some(vchan),
             queue: Default::default(),
             state: ReadState::ReadingHeader,
             buffer: vec![],
             did_reconnect: false,
             domid: domain,
+            kind: Kind::Agent,
             xconf: Default::default(),
-        };
-        res.write(qubes_gui::PROTOCOL_VERSION.as_bytes())?;
-        res.flush_pending_writes()?;
-        res.vchan
-            .as_mut()
-            .expect("Set to Some above; qed")
-            .recv(res.xconf.as_mut_bytes())?;
-        let xconf = res.xconf;
-        Ok((res, xconf))
+        })
     }
 
-    pub fn daemon(domain: u16, xconf: qubes_gui::XConfVersion) -> io::Result<Self> {
+    pub fn daemon(domain: u16, mut xconf: qubes_gui::XConfVersion) -> io::Result<Self> {
+        xconf.version = qubes_gui::PROTOCOL_VERSION;
         Ok(Self {
             vchan: Some(vchan::Vchan::client(
                 domain,
@@ -364,6 +411,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
             buffer: vec![],
             did_reconnect: false,
             domid: domain,
+            kind: Kind::Daemon,
             xconf,
         })
     }

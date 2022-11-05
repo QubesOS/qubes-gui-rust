@@ -401,17 +401,24 @@ qubes_castable::castable! {
         pub size: WindowSize
     }
 
-    /// Daemon ⇒ agent: Version and root window configuration; sent only at
-    /// startup, without a header.
-    pub struct XConfVersion {
-        /// Negotiated protocol version
-        pub version: u32,
+    /// Daemon ⇒ agent: Root window configuration; sent only at startup,
+    /// without a header.  Only used in protocol 1.3 and below.
+    pub struct XConf {
         /// Root window size
         pub size: WindowSize,
         /// X11 Depth of the root window
         pub depth: u32,
         /// Memory (in KiB) required by the root window, with at least 1 byte to spare
         pub mem: u32,
+    }
+
+    /// Daemon ⇒ agent: Version and root window configuration; sent only at
+    /// startup, without a header.  Only used in protocol 1.4 and better.
+    pub struct XConfVersion {
+        /// Negotiated protocol version
+        pub version: u32,
+        /// Root window configuration
+        pub xconf: XConf,
     }
 
     /// Bidirectional: Metadata about a mapping
