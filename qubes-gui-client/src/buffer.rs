@@ -427,7 +427,6 @@ impl RawMessageStream<Option<vchan::Vchan>> {
         self.queue.clear();
         self.buffer.clear();
         self.state = ReadState::Connecting;
-        self.vchan.send(((1u32 << 16) | 3u32).as_bytes())?;
         Ok(())
     }
 
