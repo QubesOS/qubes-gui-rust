@@ -255,7 +255,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
     /// more data needs to arrive, returns `Ok(None)`.  If an error occurs,
     /// `Err` is returned, and the stream is placed in an error state.  If the
     /// stream is in an error state, all further functions will fail.
-    pub fn read_message<'a, 'b: 'a>(&'b mut self) -> io::Result<Option<Buffer<'a>>> {
+    pub fn read_message<'a>(&'a mut self) -> io::Result<Option<Buffer<'a>>> {
         const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConfVersion>();
         if let Err(e) = self.flush_pending_writes() {
             self.state = ReadState::Error;
