@@ -14,7 +14,6 @@ To maximize portability and build-time parallelism, and to prevent circular
 dependencies, these libraries are broken up into several different crates.  Each
 crate serves a specific purpose, and some are reusable outside of Qubes OS.
 
-
 ### Qubes-Castable
 
 qubes-castable is a core crate that provides support for _castable_ structs ―
@@ -61,18 +60,6 @@ This poorly-named crate provides support for non-blocking I/O with the GUI
 daemon.  It implements a simple state machine for message parsing, and provides
 buffering of outgoing messages to prevent deadlocks.  Currently, this buffer is
 not bounded, but that will change in the future.
-
-### qubes-gui-gntalloc
-
-This provides routines for allocating Xen grant tables to be shared with the GUI
-daemon.  It currently only supports Linux, but support for other operating
-systems can be added.  For reasons of API stability, it does not rely on
-libxenlight.
-
-### qubes-gui-server
-
-This was intended to provide utilities for GUI daemons.  It currenty does not do
-anything and will eventually be removed.
 
 ### qubes-demo-agent
 
