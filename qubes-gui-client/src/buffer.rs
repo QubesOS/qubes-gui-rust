@@ -220,22 +220,6 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
         Ok(())
     }
 
-    #[inline]
-    fn recv_into(&mut self, bytes: usize) -> Result<(), vchan::Error> {
-        self.vchan.recv_into(&mut self.buffer, bytes).map_err(|e| {
-            self.state = ReadState::Error;
-            e
-        })
-    }
-
-    #[inline]
-    fn recv_struct<U: Castable + Default>(&mut self) -> Result<U, vchan::Error> {
-        self.vchan.recv_struct().map_err(|e| {
-            self.state = ReadState::Error;
-            e
-        })
-    }
-
     /// Acknowledge an event on the vchan.
     pub fn wait(&mut self) {
         self.vchan.wait()
@@ -244,11 +228,6 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
     /// Check for a reconnection, consuming the pending reconnection state.
     pub fn reconnected(&mut self) -> bool {
         std::mem::replace(&mut self.did_reconnect, false)
-    }
-
-    fn fail(&mut self, kind: ErrorKind, msg: &str) -> io::Result<Option<Buffer<'static>>> {
-        self.state = ReadState::Error;
-        Err(Error::new(kind, msg))
     }
 
     /// If a complete message has been buffered, returns `Ok(Some(msg))`.  If
@@ -261,61 +240,70 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
             self.state = ReadState::Error;
             return Err(e.into());
         }
-        let process_so_far = |s: &'a mut Self, header: Header, ready: usize| {
-            let to_read = header.len() - s.buffer.len();
-            s.recv_into(to_read.min(ready))?;
-            if ready >= to_read {
-                s.state = ReadState::ReadingHeader;
-                Ok(Some(Buffer {
-                    hdr: header,
-                    inner: &mut s.buffer,
-                }))
-            } else {
-                s.state = ReadState::ReadingBody { header };
-                Ok(None)
-            }
-        };
+        let Self {
+            ref mut vchan,
+            queue: _,
+            ref mut state,
+            ref mut buffer,
+            ref mut did_reconnect,
+            ref mut xconf,
+            domid: _,
+            ref mut kind,
+        } = self;
+        let process_so_far =
+            |buffer: &'a mut Vec<_>, header: Header, ready: usize, state: &mut ReadState| {
+                let to_read = header.len() - buffer.len();
+                vchan.recv_into(buffer, to_read.min(ready))?;
+                if ready >= to_read {
+                    *state = ReadState::ReadingHeader;
+                    Ok(Some(Buffer {
+                        hdr: header,
+                        inner: buffer,
+                    }))
+                } else {
+                    *state = ReadState::ReadingBody { header };
+                    Ok(None)
+                }
+            };
         let set_discard = |s: usize| match s {
             0 => ReadState::ReadingHeader,
             s => ReadState::Discard(s),
         };
-        loop {
-            let ready = self.vchan.data_ready();
-            match self.state {
-                ReadState::Connecting => match self.vchan.status() {
+        let mut go = |state: &mut ReadState, buffer: &'a mut Vec<_>| loop {
+            let ready = vchan.data_ready();
+            match state {
+                ReadState::Connecting => match vchan.status() {
                     vchan::Status::Waiting => return Ok(None),
-                    vchan::Status::Connected => match self.kind {
+                    vchan::Status::Connected => match kind {
                         Kind::Agent => {
-                            assert!(self.vchan.buffer_space() >= 4, "vchans have larger buffers");
-                            match self.vchan.send(qubes_gui::PROTOCOL_VERSION.as_bytes()) {
-                                Ok(()) => self.state = ReadState::Negotiating,
-                                Err(e) => {
-                                    self.state = ReadState::Error;
-                                    break Err(e.into());
-                                }
+                            assert!(vchan.buffer_space() >= 4, "vchans have larger buffers");
+                            match vchan.send(qubes_gui::PROTOCOL_VERSION.as_bytes()) {
+                                Ok(()) => *state = ReadState::Negotiating,
+                                Err(e) => break Err(e.into()),
                             }
                         }
-                        Kind::Daemon => self.state = ReadState::Negotiating,
+                        Kind::Daemon => *state = ReadState::Negotiating,
                     },
                     vchan::Status::Disconnected => {
-                        break self.fail(ErrorKind::Other, "vchan connection refused");
+                        break Err(Error::new(ErrorKind::Other, "vchan connection refused"));
                     }
                 },
-                ReadState::Error => break self.fail(ErrorKind::Other, "Already in error state"),
-                ReadState::Negotiating => match self.kind {
+                ReadState::Error => {
+                    break Err(Error::new(ErrorKind::Other, "Already in error state"))
+                }
+                ReadState::Negotiating => match *kind {
                     Kind::Agent if ready >= SIZE_OF_XCONF => {
-                        let xconf: qubes_gui::XConfVersion = self.recv_struct()?;
+                        let new_xconf: qubes_gui::XConfVersion = vchan.recv_struct()?;
                         let (daemon_major, daemon_minor) =
-                            (xconf.version >> 16, xconf.version & 0xFFFF);
+                            (new_xconf.version >> 16, new_xconf.version & 0xFFFF);
                         if qubes_gui::PROTOCOL_VERSION_MAJOR == daemon_major
                             && qubes_gui::PROTOCOL_VERSION_MINOR >= daemon_minor
                             && daemon_minor >= 4
                         {
-                            self.xconf = xconf;
-                            self.state = ReadState::ReadingHeader;
-                            self.did_reconnect = true;
+                            *xconf = new_xconf;
+                            *state = ReadState::ReadingHeader;
+                            *did_reconnect = true;
                         } else {
-                            self.state = ReadState::Error;
                             break Err(Error::new(ErrorKind::InvalidData,
                                             format!(
                                                 "Version negotiation failed: their version is {}.{} but ours is {}.{}",
@@ -326,20 +314,19 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                         }
                     }
                     Kind::Daemon if ready >= 4 => {
-                        let version: u32 = self.recv_struct()?;
+                        let version: u32 = vchan.recv_struct()?;
                         let (major, minor) = (version >> 16, version & 0xFFFF);
                         if major == qubes_gui::PROTOCOL_VERSION_MAJOR {
                             let version = version.min(qubes_gui::PROTOCOL_VERSION_MINOR);
-                            self.xconf.version = version;
+                            xconf.version = version;
                             if version >= 4 {
-                                self.vchan.send(self.xconf.as_bytes())?
+                                vchan.send(xconf.as_bytes())?
                             } else {
-                                self.vchan.send(self.xconf.xconf.as_bytes())?
+                                vchan.send(xconf.xconf.as_bytes())?
                             }
-                            self.state = ReadState::ReadingHeader
+                            *state = ReadState::ReadingHeader
                         } else {
-                            self.state = ReadState::Error;
-                            return Err(Error::new(
+                            break Err(Error::new(
                                     ErrorKind::InvalidData,
                                     format!(
                                         "Unsupported version from agent: daemon supports {}.{} but agent sent {}.{}",
@@ -354,33 +341,43 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                 },
                 ReadState::ReadingHeader if ready >= size_of::<Header>() => {
                     // Reset buffer to 0 bytes
-                    self.buffer.clear();
-                    let header: UntrustedHeader = self.recv_struct()?;
+                    buffer.clear();
+                    let header: UntrustedHeader = vchan.recv_struct()?;
                     match header.validate_length() {
                         Err(e) => {
-                            self.state = ReadState::Error;
                             break Err(Error::new(ErrorKind::InvalidData, format!("{}", e)));
                         }
                         Ok(Some(header)) => {
-                            break process_so_far(self, header, ready - size_of::<Header>());
+                            break process_so_far(
+                                buffer,
+                                header,
+                                ready - size_of::<Header>(),
+                                state,
+                            );
                         }
-                        Ok(None) => self.state = set_discard(u32_to_usize(header.untrusted_len)),
+                        Ok(None) => *state = set_discard(u32_to_usize(header.untrusted_len)),
                     }
                 }
                 ReadState::ReadingHeader => break Ok(None),
                 ReadState::Discard(untrusted_len) => {
-                    let untrusted_to_discard = ready.min(untrusted_len);
-                    match self.vchan.discard(untrusted_to_discard) {
+                    let untrusted_to_discard = ready.min(*untrusted_len);
+                    match vchan.discard(untrusted_to_discard) {
                         Err(e) => {
-                            self.state = ReadState::Error;
                             break Err(e.into());
                         }
-                        Ok(()) => self.state = set_discard(untrusted_len - untrusted_to_discard),
+                        Ok(()) => *state = set_discard(*untrusted_len - untrusted_to_discard),
                     }
                 }
                 ReadState::ReadingBody { header } => {
-                    break process_so_far(self, header, ready);
+                    break process_so_far(buffer, *header, ready, state);
                 }
+            }
+        };
+        match go(state, buffer) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                *state = ReadState::Error;
+                Err(e)
             }
         }
     }
