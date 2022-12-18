@@ -24,6 +24,7 @@
 #![forbid(unconditional_recursion)]
 #![forbid(clippy::all)]
 
+pub use buffer::Buffer;
 use qubes_castable::Castable as _;
 pub use qubes_gui;
 use std::convert::TryInto;
@@ -31,32 +32,11 @@ use std::io;
 use std::task::Poll;
 
 mod buffer;
-use buffer::ClaimableBuffer;
-use qubes_gui::Header;
 
 /// The entry-point to the library.
 #[derive(Debug)]
 pub struct Client {
     raw: buffer::RawMessageStream<Option<vchan::Vchan>>,
-}
-
-/// A buffer
-#[derive(Debug)]
-pub struct Buffer<'a>(ClaimableBuffer<'a, Option<vchan::Vchan>>);
-
-impl<'a> Buffer<'a> {
-    /// Gets the header
-    pub fn hdr(&self) -> Header {
-        self.0.hdr()
-    }
-    /// Gets a reference to the body
-    pub fn body(&self) -> &[u8] {
-        self.0.body()
-    }
-    /// Takes ownership of the body
-    pub fn take(self) -> Vec<u8> {
-        self.0.take()
-    }
 }
 
 impl Client {
@@ -118,7 +98,7 @@ impl Client {
     pub fn read_message(&mut self) -> Poll<io::Result<Buffer<'_>>> {
         match self.raw.read_message() {
             Ok(None) => Poll::Pending,
-            Ok(Some(v)) => Poll::Ready(Ok(Buffer(v))),
+            Ok(Some(v)) => Poll::Ready(Ok(v)),
             Err(e) => Poll::Ready(Err(e)),
         }
     }

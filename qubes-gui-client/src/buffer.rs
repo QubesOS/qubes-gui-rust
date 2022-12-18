@@ -130,21 +130,25 @@ fn u32_to_usize(i: u32) -> usize {
     i as usize
 }
 
+/// A buffer
 #[derive(Debug)]
-pub(crate) struct ClaimableBuffer<'a, T: VchanMock> {
-    inner: &'a mut RawMessageStream<T>,
+pub struct Buffer<'a> {
+    inner: &'a mut Vec<u8>,
     hdr: Header,
 }
 
-impl<'a, T: VchanMock> ClaimableBuffer<'a, T> {
-    pub(crate) fn hdr(&self) -> Header {
+impl<'a> Buffer<'a> {
+    /// Gets the header
+    pub fn hdr(&self) -> Header {
         self.hdr
     }
-    pub(crate) fn body(&self) -> &[u8] {
-        &self.inner.buffer[..]
+    /// Gets a reference to the body
+    pub fn body(&self) -> &[u8] {
+        &self.inner[..]
     }
-    pub(crate) fn take(self) -> Vec<u8> {
-        std::mem::replace(&mut self.inner.buffer, vec![])
+    /// Takes ownership of the body
+    pub fn take(mut self) -> Vec<u8> {
+        std::mem::replace(&mut self.inner, vec![])
     }
 }
 
@@ -242,11 +246,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
         std::mem::replace(&mut self.did_reconnect, false)
     }
 
-    fn fail(
-        &mut self,
-        kind: ErrorKind,
-        msg: &str,
-    ) -> io::Result<Option<ClaimableBuffer<'static, T>>> {
+    fn fail(&mut self, kind: ErrorKind, msg: &str) -> io::Result<Option<Buffer<'static>>> {
         self.state = ReadState::Error;
         Err(Error::new(kind, msg))
     }
@@ -255,7 +255,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
     /// more data needs to arrive, returns `Ok(None)`.  If an error occurs,
     /// `Err` is returned, and the stream is placed in an error state.  If the
     /// stream is in an error state, all further functions will fail.
-    pub fn read_message<'a, 'b: 'a>(&'b mut self) -> io::Result<Option<ClaimableBuffer<'a, T>>> {
+    pub fn read_message<'a, 'b: 'a>(&'b mut self) -> io::Result<Option<Buffer<'a>>> {
         const SIZE_OF_XCONF: usize = size_of::<qubes_gui::XConfVersion>();
         if let Err(e) = self.flush_pending_writes() {
             self.state = ReadState::Error;
@@ -266,9 +266,9 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
             s.recv_into(to_read.min(ready))?;
             if ready >= to_read {
                 s.state = ReadState::ReadingHeader;
-                Ok(Some(ClaimableBuffer {
+                Ok(Some(Buffer {
                     hdr: header,
-                    inner: s,
+                    inner: &mut s.buffer,
                 }))
             } else {
                 s.state = ReadState::ReadingBody { header };
