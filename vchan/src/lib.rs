@@ -255,7 +255,7 @@ impl Vchan {
     #[cfg(feature = "castable")]
     pub fn recv_struct<T: qubes_castable::Castable>(&self) -> Result<T, Error> {
         let mut datum = std::mem::MaybeUninit::<T>::uninit();
-        // SAFETY: status.as_mut_ptr() is a valid pointer to size_of::<T>()
+        // SAFETY: datum.as_mut_ptr() is a valid pointer to size_of::<T>()
         // bytes of memory, and unsafe_recv() is okay with uninitialized memory.
         unsafe { self.unsafe_recv(datum.as_mut_ptr() as *mut _, std::mem::size_of::<T>()) }?;
         // SAFETY: libvchan_recv fully initialized the buffer, and a
