@@ -20,7 +20,7 @@
 //! A wrapper around vchans that provides a write buffer.  Used to prevent
 //! deadlocks.
 
-use qubes_castable::Castable;
+use qubes_castable::{static_assert, Castable};
 use qubes_gui::{Header, UntrustedHeader};
 use std::collections::VecDeque;
 use std::io::{self, Error, ErrorKind};
@@ -117,17 +117,6 @@ pub(crate) struct RawMessageStream<T: VchanMock> {
     domid: u16,
     /// Agent or daemon?
     kind: Kind,
-}
-
-#[inline(always)]
-fn u32_to_usize(i: u32) -> usize {
-    // If u32 doesn’t actually fit in a usize, fail the build
-    let [] = [0; if u32::MAX as usize as u32 == u32::MAX {
-        0
-    } else {
-        1
-    }];
-    i as usize
 }
 
 /// A buffer
@@ -240,6 +229,10 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
             self.state = ReadState::Error;
             return Err(e.into());
         }
+        static_assert!(
+            size_of::<u32>() <= size_of::<usize>(),
+            "<32-bit systems not supported"
+        );
         let Self {
             ref mut vchan,
             queue: _,
@@ -265,10 +258,6 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                     Ok(None)
                 }
             };
-        let set_discard = |s: usize| match s {
-            0 => ReadState::ReadingHeader,
-            s => ReadState::Discard(s),
-        };
         let mut go = |state: &mut ReadState, buffer: &'a mut Vec<_>| loop {
             let ready = vchan.data_ready();
             match state {
@@ -339,7 +328,8 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                     }
                     Kind::Agent | Kind::Daemon => break Ok(None),
                 },
-                ReadState::ReadingHeader if ready >= size_of::<Header>() => {
+                ReadState::ReadingHeader if ready < size_of::<Header>() => break Ok(None),
+                ReadState::ReadingHeader => {
                     // Reset buffer to 0 bytes
                     buffer.clear();
                     let header: UntrustedHeader = vchan.recv_struct()?;
@@ -355,18 +345,15 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                                 state,
                             );
                         }
-                        Ok(None) => *state = set_discard(u32_to_usize(header.untrusted_len)),
+                        Ok(None) if header.untrusted_len == 0 => *state = ReadState::ReadingHeader,
+                        Ok(None) => *state = ReadState::Discard(header.untrusted_len as _),
                     }
                 }
-                // Not enough data
-                ReadState::ReadingHeader => break Ok(None),
                 ReadState::Discard(untrusted_len) => {
-                    let untrusted_to_discard = ready.min(*untrusted_len);
-                    match vchan.discard(untrusted_to_discard) {
-                        Err(e) => {
-                            break Err(e.into());
-                        }
-                        Ok(()) => *state = set_discard(*untrusted_len - untrusted_to_discard),
+                    match vchan.discard(ready.min(*untrusted_len)) {
+                        Err(e) => break Err(e.into()),
+                        Ok(()) if ready >= *untrusted_len => *state = ReadState::ReadingHeader,
+                        Ok(()) => *untrusted_len -= ready,
                     }
                 }
                 ReadState::ReadingBody { header } => {
