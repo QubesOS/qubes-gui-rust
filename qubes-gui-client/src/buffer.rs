@@ -241,7 +241,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
             ref mut did_reconnect,
             ref mut xconf,
             domid: _,
-            ref mut kind,
+            kind,
         } = self;
         let process_so_far =
             |buffer: &'a mut Vec<_>, header: Header, ready: usize, state: &mut ReadState| {
@@ -264,6 +264,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                 ReadState::Connecting => match vchan.status() {
                     vchan::Status::Waiting => return Ok(None),
                     vchan::Status::Connected => match kind {
+                        Kind::Daemon => *state = ReadState::Negotiating,
                         Kind::Agent => {
                             assert!(vchan.buffer_space() >= 4, "vchans have larger buffers");
                             match vchan.send(qubes_gui::PROTOCOL_VERSION.as_bytes()) {
@@ -271,7 +272,6 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                                 Err(e) => break Err(e.into()),
                             }
                         }
-                        Kind::Daemon => *state = ReadState::Negotiating,
                     },
                     vchan::Status::Disconnected => {
                         break Err(Error::new(ErrorKind::Other, "vchan connection refused"));
