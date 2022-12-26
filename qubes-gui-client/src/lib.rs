@@ -104,7 +104,7 @@ impl Client {
     }
 
     /// Creates a daemon instance
-    pub fn daemon(domain: u16, xconf: qubes_gui::XConfVersion) -> io::Result<Self> {
+    pub fn daemon(domain: u16, xconf: qubes_gui::XConf) -> io::Result<Self> {
         Ok(Self {
             raw: buffer::RawMessageStream::daemon(domain, xconf)?,
         })

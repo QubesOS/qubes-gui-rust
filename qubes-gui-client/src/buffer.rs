@@ -402,8 +402,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
         })
     }
 
-    pub fn daemon(domain: u16, mut xconf: qubes_gui::XConfVersion) -> io::Result<Self> {
-        xconf.version = qubes_gui::PROTOCOL_VERSION;
+    pub fn daemon(domain: u16, xconf: qubes_gui::XConf) -> io::Result<Self> {
         Ok(Self {
             vchan: Some(vchan::Vchan::client(
                 domain,
@@ -415,7 +414,10 @@ impl RawMessageStream<Option<vchan::Vchan>> {
             did_reconnect: false,
             domid: domain,
             kind: Kind::Daemon,
-            xconf,
+            xconf: qubes_gui::XConfVersion {
+                version: qubes_gui::PROTOCOL_VERSION,
+                xconf,
+            },
         })
     }
 
