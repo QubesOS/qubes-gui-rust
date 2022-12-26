@@ -25,6 +25,7 @@ use qubes_gui::{Header, UntrustedHeader};
 use std::collections::VecDeque;
 use std::io::{self, Error, ErrorKind};
 use std::mem::size_of;
+use vchan::{Status, Vchan};
 
 #[cfg(test)]
 mod tests;
@@ -57,36 +58,36 @@ where
     fn send(&self, buf: &[u8]) -> Result<(), vchan::Error>;
     fn wait(&self);
     fn data_ready(&self) -> usize;
-    fn status(&self) -> vchan::Status;
+    fn status(&self) -> Status;
     fn discard(&self, bytes: usize) -> Result<(), vchan::Error>;
 }
 
-impl VchanMock for Option<vchan::Vchan> {
+impl VchanMock for Option<Vchan> {
     fn discard(&self, bytes: usize) -> Result<(), vchan::Error> {
-        vchan::Vchan::discard(self.as_ref().unwrap(), bytes)
+        Vchan::discard(self.as_ref().unwrap(), bytes)
     }
     fn buffer_space(&self) -> usize {
-        vchan::Vchan::buffer_space(self.as_ref().unwrap())
+        Vchan::buffer_space(self.as_ref().unwrap())
     }
     fn recv_into(&self, buf: &mut Vec<u8>, bytes: usize) -> Result<(), vchan::Error> {
-        vchan::Vchan::recv_into(self.as_ref().unwrap(), buf, bytes)
+        Vchan::recv_into(self.as_ref().unwrap(), buf, bytes)
     }
     fn recv_struct<T: Castable>(&self) -> Result<T, vchan::Error> {
-        vchan::Vchan::recv_struct(self.as_ref().unwrap())
+        Vchan::recv_struct(self.as_ref().unwrap())
     }
     fn send(&self, buf: &[u8]) -> Result<(), vchan::Error> {
-        vchan::Vchan::send(self.as_ref().unwrap(), buf)
+        Vchan::send(self.as_ref().unwrap(), buf)
     }
     fn wait(&self) {
-        vchan::Vchan::wait(self.as_ref().unwrap())
+        Vchan::wait(self.as_ref().unwrap())
     }
     fn data_ready(&self) -> usize {
-        vchan::Vchan::data_ready(self.as_ref().unwrap())
+        Vchan::data_ready(self.as_ref().unwrap())
     }
-    fn status(&self) -> vchan::Status {
+    fn status(&self) -> Status {
         self.as_ref()
-            .map(vchan::Vchan::status)
-            .unwrap_or(vchan::Status::Disconnected)
+            .map(Vchan::status)
+            .unwrap_or(Status::Disconnected)
     }
 }
 
@@ -234,14 +235,13 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
             "<32-bit systems not supported"
         );
         let Self {
-            ref mut vchan,
-            queue: _,
-            ref mut state,
-            ref mut buffer,
-            ref mut did_reconnect,
-            ref mut xconf,
-            domid: _,
+            vchan,
+            state,
+            buffer,
+            did_reconnect,
+            xconf,
             kind,
+            ..
         } = self;
         let process_so_far =
             |buffer: &'a mut Vec<_>, header: Header, ready: usize, state: &mut ReadState| {
@@ -262,8 +262,8 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
             let ready = vchan.data_ready();
             match state {
                 ReadState::Connecting => match vchan.status() {
-                    vchan::Status::Waiting => return Ok(None),
-                    vchan::Status::Connected => match kind {
+                    Status::Waiting => return Ok(None),
+                    Status::Connected => match kind {
                         Kind::Daemon => *state = ReadState::Negotiating,
                         Kind::Agent => {
                             assert!(vchan.buffer_space() >= 4, "vchans have larger buffers");
@@ -273,7 +273,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                             }
                         }
                     },
-                    vchan::Status::Disconnected => {
+                    Status::Disconnected => {
                         break Err(Error::new(ErrorKind::Other, "vchan connection refused"));
                     }
                 },
@@ -371,13 +371,13 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
     }
 
     pub fn needs_reconnect(&self) -> bool {
-        self.vchan.status() == vchan::Status::Disconnected
+        self.vchan.status() == Status::Disconnected
     }
 }
 
-impl RawMessageStream<Option<vchan::Vchan>> {
+impl RawMessageStream<Option<Vchan>> {
     pub fn agent(domain: u16) -> io::Result<Self> {
-        let vchan = vchan::Vchan::server(domain, qubes_gui::LISTENING_PORT.into(), 4096, 4096)?;
+        let vchan = Vchan::server(domain, qubes_gui::LISTENING_PORT.into(), 4096, 4096)?;
         Ok(Self {
             vchan: Some(vchan),
             queue: Default::default(),
@@ -392,10 +392,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
 
     pub fn daemon(domain: u16, xconf: qubes_gui::XConf) -> io::Result<Self> {
         Ok(Self {
-            vchan: Some(vchan::Vchan::client(
-                domain,
-                qubes_gui::LISTENING_PORT.into(),
-            )?),
+            vchan: Some(Vchan::client(domain, qubes_gui::LISTENING_PORT.into())?),
             queue: Default::default(),
             state: ReadState::ReadingHeader,
             buffer: vec![],
@@ -411,7 +408,7 @@ impl RawMessageStream<Option<vchan::Vchan>> {
 
     pub fn reconnect(&mut self) -> Result<(), vchan::Error> {
         self.vchan = None;
-        self.vchan = Some(vchan::Vchan::server(
+        self.vchan = Some(Vchan::server(
             self.domid,
             qubes_gui::LISTENING_PORT.into(),
             4096,
