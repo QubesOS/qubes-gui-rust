@@ -32,6 +32,7 @@ mod tests;
 
 /// Protocol state
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 enum ReadState {
     /// Currently connecting
     Connecting,

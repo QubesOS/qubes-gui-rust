@@ -20,6 +20,7 @@
 
 use super::*;
 use std::cell::RefCell;
+use std::rc::Rc;
 struct MockVchan {
     read_buf: Vec<u8>,
     write_buf: Vec<u8>,
@@ -28,7 +29,7 @@ struct MockVchan {
     cursor: usize,
 }
 
-impl VchanMock for RefCell<MockVchan> {
+impl VchanMock for Rc<RefCell<MockVchan>> {
     fn wait(&self) {}
     fn status(&self) -> vchan::Status {
         vchan::Status::Connected
@@ -60,8 +61,8 @@ impl VchanMock for RefCell<MockVchan> {
             "Agents never read more data than is available"
         );
         buffer.extend_from_slice(&s.read_buf[s.cursor..s.cursor + bytes]);
-        s.cursor += buffer.len();
-        s.data_ready -= buffer.len();
+        s.cursor += bytes;
+        s.data_ready -= bytes;
         Ok(())
     }
     fn recv_struct<T: Castable + Default>(&self) -> Result<T, vchan::Error> {
@@ -109,8 +110,8 @@ fn vchan_writes() {
         data_ready: 0,
         cursor: 0,
     };
-    let mut under_test = RawMessageStream::<RefCell<MockVchan>> {
-        vchan: RefCell::new(mock_vchan),
+    let mut under_test = RawMessageStream::<Rc<RefCell<MockVchan>>> {
+        vchan: Rc::new(RefCell::new(mock_vchan)),
         queue: Default::default(),
         state: ReadState::Connecting,
         buffer: vec![],
@@ -211,4 +212,104 @@ fn vchan_writes() {
         b"test1\0another alpha gamma delta gamma delta gamma delta",
         "correct data written"
     );
+}
+
+macro_rules! s {
+    ($v: ty) => {
+        ::std::mem::size_of::<$v>() as u32
+    };
+}
+
+#[test]
+fn vchan_reads() {
+    use qubes_gui::WindowID;
+    let mock_vchan = MockVchan {
+        read_buf: vec![],
+        write_buf: vec![],
+        buffer_space: 0,
+        data_ready: 0,
+        cursor: 0,
+    };
+    let vchan = Rc::new(RefCell::new(mock_vchan));
+    let mut under_test = RawMessageStream::<Rc<RefCell<MockVchan>>> {
+        vchan: vchan.clone(),
+        queue: Default::default(),
+        state: ReadState::ReadingHeader,
+        buffer: vec![],
+        did_reconnect: false,
+        xconf: Default::default(),
+        domid: 0,
+        kind: Kind::Agent,
+    };
+    let mut hdr = UntrustedHeader {
+        untrusted_len: 1,
+        ty: qubes_gui::MSG_MFNDUMP,
+        window: 0.into(),
+    };
+    under_test
+        .vchan
+        .borrow_mut()
+        .read_buf
+        .extend_from_slice(hdr.as_bytes());
+    under_test.vchan.borrow_mut().data_ready = 2;
+    assert!(
+        under_test.read_message().unwrap().is_none(),
+        "not enough data"
+    );
+    assert!(matches!(under_test.state, ReadState::ReadingHeader));
+    under_test.vchan.borrow_mut().data_ready = 12;
+    assert!(under_test.read_message().is_err(), "bad header!");
+    assert!(matches!(under_test.state, ReadState::Error));
+
+    // Test that a header and partial body can be read in one go
+    under_test.state = ReadState::ReadingHeader;
+    hdr.ty = qubes_gui::MSG_CONFIGURE;
+    hdr.untrusted_len = s!(qubes_gui::Configure);
+    under_test.vchan.borrow_mut().data_ready = 13;
+    under_test
+        .vchan
+        .borrow_mut()
+        .read_buf
+        .extend_from_slice(hdr.as_bytes());
+    let c = qubes_gui::Configure {
+        rectangle: qubes_gui::Rectangle {
+            top_left: qubes_gui::Coordinates { x: 0, y: 0 },
+            size: qubes_gui::WindowSize {
+                width: 1,
+                height: 1,
+            },
+        },
+        override_redirect: 0,
+    };
+    vchan.borrow_mut().read_buf.extend_from_slice(c.as_bytes());
+    assert!(
+        under_test.read_message().unwrap().is_none(),
+        "body not fully written yet!"
+    );
+    match under_test.state {
+        ReadState::ReadingBody { header } => assert_eq!(header.inner(), hdr),
+        e => panic!("Bad state {:?}!", e),
+    }
+    assert_eq!(under_test.buffer.len(), 1);
+    assert_eq!(vchan.borrow_mut().data_ready, 0);
+
+    // Test partial reads when there is already some data in the buffer
+    vchan.borrow_mut().data_ready = 5;
+    assert!(
+        under_test.read_message().unwrap().is_none(),
+        "body not fully written yet!"
+    );
+    match under_test.state {
+        ReadState::ReadingBody { header } => assert_eq!(header.inner(), hdr),
+        e => panic!("Bad state {:?}!", e),
+    }
+    assert_eq!(under_test.buffer.len(), 6);
+    assert_eq!(vchan.borrow_mut().data_ready, 0);
+
+    // Test completion of body
+    vchan.borrow_mut().data_ready = s!(qubes_gui::Configure) as usize - 6;
+    assert!(under_test.read_message().unwrap().is_some(), "have a body!");
+    assert!(matches!(under_test.state, ReadState::ReadingHeader));
+    assert_eq!(under_test.buffer.len(), s!(qubes_gui::Configure) as _);
+    assert_eq!(vchan.borrow_mut().data_ready, 0);
 }
