@@ -24,6 +24,15 @@
 use std::io::{ErrorKind, Read, Write};
 use std::os::{raw::c_int, raw::c_void, unix::prelude::RawFd};
 
+macro_rules! static_assert {
+    ($s: expr) => {
+        #[cfg(feature = "castable")]
+        qubes_castable::static_assert!($s);
+        #[cfg(not(feature = "castable"))]
+        let _: [u8; 0] = [0u8; if expr { 0 } else { 1 }];
+    };
+}
+
 /// Status of the channel
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Status {
@@ -225,7 +234,7 @@ impl Vchan {
     pub fn discard(&self, mut bytes: usize) -> Result<(), Error> {
         use std::mem::{size_of, MaybeUninit};
         let mut buf: MaybeUninit<[u8; 256]> = MaybeUninit::uninit();
-        let _: [u8; size_of::<MaybeUninit<[u8; 256]>>()] = [0u8; 256];
+        static_assert!(size_of::<MaybeUninit<[u8; 256]>>() == 256);
         while bytes > 0 {
             let to_read = 256.min(bytes);
             unsafe { self.unsafe_recv(&mut buf as *mut _ as *mut _, to_read)? }
