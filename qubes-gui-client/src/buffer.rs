@@ -319,11 +319,11 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                         if major == qubes_gui::PROTOCOL_VERSION_MAJOR {
                             let version = version.min(qubes_gui::PROTOCOL_VERSION_MINOR);
                             xconf.version = version;
-                            if version >= 4 {
-                                vchan.send(xconf.as_bytes())?
+                            vchan.send(if version >= 4 {
+                                xconf.as_bytes()
                             } else {
-                                vchan.send(xconf.xconf.as_bytes())?
-                            }
+                                xconf.xconf.as_bytes()
+                            })?;
                             *state = ReadState::ReadingHeader
                         } else {
                             break Err(Error::new(
