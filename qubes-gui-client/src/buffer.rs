@@ -358,6 +358,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                         Ok(None) => *state = set_discard(u32_to_usize(header.untrusted_len)),
                     }
                 }
+                // Not enough data
                 ReadState::ReadingHeader => break Ok(None),
                 ReadState::Discard(untrusted_len) => {
                     let untrusted_to_discard = ready.min(*untrusted_len);
