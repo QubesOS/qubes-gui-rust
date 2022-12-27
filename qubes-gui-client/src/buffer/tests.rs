@@ -222,7 +222,6 @@ macro_rules! s {
 
 #[test]
 fn vchan_reads() {
-    use qubes_gui::WindowID;
     let mock_vchan = MockVchan {
         read_buf: vec![],
         write_buf: vec![],
@@ -263,11 +262,10 @@ fn vchan_reads() {
 
     // Test that a header and partial body can be read in one go
     under_test.state = ReadState::ReadingHeader;
+    under_test.vchan.borrow_mut().data_ready = 13;
     hdr.ty = qubes_gui::MSG_CONFIGURE;
     hdr.untrusted_len = s!(qubes_gui::Configure);
-    under_test.vchan.borrow_mut().data_ready = 13;
-    under_test
-        .vchan
+    vchan
         .borrow_mut()
         .read_buf
         .extend_from_slice(hdr.as_bytes());
@@ -312,4 +310,39 @@ fn vchan_reads() {
     assert!(matches!(under_test.state, ReadState::ReadingHeader));
     assert_eq!(under_test.buffer.len(), s!(qubes_gui::Configure) as _);
     assert_eq!(vchan.borrow_mut().data_ready, 0);
+
+    // Test empty message
+    hdr.untrusted_len = 0;
+    hdr.ty = qubes_gui::MSG_CLIPBOARD_REQ;
+    vchan
+        .borrow_mut()
+        .read_buf
+        .extend_from_slice(hdr.as_bytes());
+    vchan.borrow_mut().data_ready = 12;
+    assert!(
+        under_test.read_message().unwrap().is_some(),
+        "complete message"
+    );
+    assert!(
+        matches!(under_test.state, ReadState::ReadingHeader),
+        "State after empty message not reset to ReadingHeader"
+    );
+
+    // Test message that arrives in one go
+    hdr.ty = qubes_gui::MSG_CONFIGURE;
+    hdr.untrusted_len = s!(qubes_gui::Configure);
+    vchan
+        .borrow_mut()
+        .read_buf
+        .extend_from_slice(hdr.as_bytes());
+    vchan.borrow_mut().read_buf.extend_from_slice(c.as_bytes());
+    vchan.borrow_mut().data_ready = s!(qubes_gui::Configure) as usize + 12;
+    assert!(
+        under_test.read_message().unwrap().is_some(),
+        "complete message"
+    );
+    assert!(
+        matches!(under_test.state, ReadState::ReadingHeader),
+        "State after complete message not reset to ReadingHeader"
+    );
 }
