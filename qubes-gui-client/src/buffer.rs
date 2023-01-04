@@ -244,21 +244,6 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
             kind,
             ..
         } = self;
-        let process_so_far =
-            |buffer: &'a mut Vec<_>, header: Header, ready: usize, state: &mut ReadState| {
-                let to_read = header.len() - buffer.len();
-                vchan.recv_into(buffer, to_read.min(ready))?;
-                if ready >= to_read {
-                    *state = ReadState::ReadingHeader;
-                    Ok(Some(Buffer {
-                        hdr: header,
-                        inner: buffer,
-                    }))
-                } else {
-                    *state = ReadState::ReadingBody { header };
-                    Ok(None)
-                }
-            };
         let mut go = |state: &mut ReadState, buffer: &'a mut Vec<_>| loop {
             let ready = vchan.data_ready();
             match state {
@@ -338,14 +323,7 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                         Err(e) => {
                             break Err(Error::new(ErrorKind::InvalidData, format!("{}", e)));
                         }
-                        Ok(Some(header)) => {
-                            break process_so_far(
-                                buffer,
-                                header,
-                                ready - size_of::<Header>(),
-                                state,
-                            );
-                        }
+                        Ok(Some(header)) => *state = ReadState::ReadingBody { header },
                         Ok(None) if header.untrusted_len == 0 => *state = ReadState::ReadingHeader,
                         Ok(None) => *state = ReadState::Discard(header.untrusted_len as _),
                     }
@@ -358,7 +336,18 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                     }
                 }
                 ReadState::ReadingBody { header } => {
-                    break process_so_far(buffer, *header, ready, state);
+                    let to_read = header.len() - buffer.len();
+                    vchan.recv_into(buffer, to_read.min(ready))?;
+                    break if ready >= to_read {
+                        let header = *header;
+                        *state = ReadState::ReadingHeader;
+                        Ok(Some(Buffer {
+                            hdr: header,
+                            inner: buffer,
+                        }))
+                    } else {
+                        Ok(None)
+                    };
                 }
             }
         };
