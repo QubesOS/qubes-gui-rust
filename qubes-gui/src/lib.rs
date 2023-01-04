@@ -380,9 +380,9 @@ qubes_castable::castable! {
     /// X and Y coordinates relative to the top-left of the screen
     pub struct Coordinates {
         /// X coordinate in pixels
-        pub x: u32,
+        pub x: i32,
         /// Y coordinate in pixels
-        pub y: u32,
+        pub y: i32,
     }
 
     /// Window size
