@@ -201,11 +201,16 @@ impl Vchan {
     /// # Safety
     ///
     /// It must be permissable to write to the half-open range
-    /// [ptr, ptr.add_size()).  It is _not_ necessary that the memory in this
+    /// `[ptr, ptr.add(size))`.  It is _not_ necessary that the memory in this
     /// range be initialized, as this function will never read from it.  If this
     /// function returns successfully, the memory in the range *will* be
     /// initialized.
+    ///
+    /// If `size` is zero, the function returns without doing anything.
     unsafe fn unsafe_recv(&self, ptr: *mut c_void, size: usize) -> Result<(), Error> {
+        if size == 0 {
+            return Ok(());
+        }
         // SAFETY: by the function's precondition, ptr can validly have size
         // bytes written to it.  By Rust's type safety, self.inner is a valid
         // vchan.
