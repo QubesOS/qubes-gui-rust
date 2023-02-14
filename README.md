@@ -54,12 +54,12 @@ can be lifted without too much difficulty.
 This is a safe wrapper around `vchan-sys`.  It relies on the Rust standard
 library, especially for traits such as `Read` and `Write`.
 
-### qubes-gui-client
+### qubes-gui-connection
 
-This poorly-named crate provides support for non-blocking I/O with the GUI
-daemon.  It implements a simple state machine for message parsing, and provides
-buffering of outgoing messages to prevent deadlocks.  Currently, this buffer is
-not bounded, but that will change in the future.
+This crate provides support for non-blocking I/O with the GUI daemon.  It
+implements a simple state machine for message parsing, and provides buffering
+of outgoing messages to prevent deadlocks.  Currently, this buffer is not
+bounded, but that will change in the future.
 
 ### qubes-demo-agent
 

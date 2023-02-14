@@ -35,11 +35,11 @@ mod buffer;
 
 /// The entry-point to the library.
 #[derive(Debug)]
-pub struct Client {
+pub struct Connection {
     raw: buffer::RawMessageStream<Option<vchan::Vchan>>,
 }
 
-impl Client {
+impl Connection {
     /// Send a GUI message.  This never blocks; outgoing messages are queued
     /// until there is space in the vchan.
     pub fn send<T: qubes_gui::Message>(
@@ -50,7 +50,7 @@ impl Client {
         self.send_raw(message.as_bytes(), window, T::KIND as _)
     }
 
-    /// Raw version of [`Client::send`].  Using [`Client::send`] is preferred
+    /// Raw version of [`Connection::send`].  Using [`Connection::send`] is preferred
     /// where possible, as it automatically selects the correct message type.
     pub fn send_raw(
         &mut self,
@@ -77,9 +77,9 @@ impl Client {
         Ok(())
     }
 
-    /// Even rawer version of [`Client::send`].  Using [`Client::send`] is
+    /// Even rawer version of [`Connection::send`].  Using [`Connection::send`] is
     /// preferred where possible, as it automatically selects the correct
-    /// message type.  Otherwise, prefer [`Client::send_raw`], which at least
+    /// message type.  Otherwise, prefer [`Connection::send_raw`], which at least
     /// ensures correct framing.
     pub fn send_raw_bytes(&mut self, msg: &[u8]) -> io::Result<()> {
         self.raw.write(msg).map_err(From::from)
@@ -134,7 +134,7 @@ impl Client {
     }
 }
 
-impl std::os::unix::io::AsRawFd for Client {
+impl std::os::unix::io::AsRawFd for Connection {
     fn as_raw_fd(&self) -> std::os::raw::c_int {
         self.raw.as_raw_fd()
     }
