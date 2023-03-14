@@ -270,6 +270,8 @@ enum_const! {
         (MSG_WINDOW_DUMP, WindowDump),
         /// Agent ⇒ daemon: Set cursor type
         (MSG_CURSOR, Cursor),
+        /// Daemon ⇒ agent: Acknowledge mapping (version 1.7+ only)
+        (MSG_WINDOW_DUMP_ACK, DumpAck),
     }
 }
 
@@ -623,6 +625,9 @@ qubes_castable::castable! {
         /// Type of cursor
         pub cursor: u32,
     }
+
+    /// Daemon ⇒ agent: Acknowledge a window dump message
+    pub struct DumpAck {}
 }
 
 macro_rules! impl_message {
