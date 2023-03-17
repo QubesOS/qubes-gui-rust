@@ -114,7 +114,7 @@ pub(crate) struct RawMessageStream<T: VchanMock> {
     /// Was reconnect successful?
     did_reconnect: bool,
     /// Configuration from the daemon
-    xconf: qubes_gui::XConfVersion,
+    pub(crate) xconf: qubes_gui::XConfVersion,
     /// Peer domain ID
     domid: u16,
     /// Agent or daemon?

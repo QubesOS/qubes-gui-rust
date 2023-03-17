@@ -132,6 +132,11 @@ impl Connection {
     pub fn needs_reconnect(&self) -> bool {
         self.raw.needs_reconnect()
     }
+
+    /// Get version information
+    pub fn xconf(&self) -> qubes_gui::XConfVersion {
+        self.raw.xconf
+    }
 }
 
 impl std::os::unix::io::AsRawFd for Connection {
