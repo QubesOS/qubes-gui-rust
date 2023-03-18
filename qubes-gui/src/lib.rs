@@ -166,7 +166,7 @@ pub const WINDOW_DUMP_TYPE_GRANT_REFS: u32 = 0;
 pub const PROTOCOL_VERSION_MAJOR: u32 = 1;
 
 /// The minor version of the protocol.
-pub const PROTOCOL_VERSION_MINOR: u32 = 4;
+pub const PROTOCOL_VERSION_MINOR: u32 = 7;
 
 /// The overall protocol version, as used on the wire.
 pub const PROTOCOL_VERSION: u32 = PROTOCOL_VERSION_MAJOR << 16 | PROTOCOL_VERSION_MINOR;
@@ -761,6 +761,7 @@ impl UntrustedHeader {
                 (refs_len % U32_SIZE) == 0 && (refs_len / U32_SIZE) <= MAX_GRANT_REFS_COUNT
             }
             MSG_CURSOR => untrusted_len == size_of::<Cursor>() as u32,
+            MSG_WINDOW_DUMP_ACK => untrusted_len == 0,
             MSG_EXECUTE => false,
             _ => return Ok(None),
         } {
