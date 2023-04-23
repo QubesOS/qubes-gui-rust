@@ -315,6 +315,10 @@ impl<T: VchanMock + 'static> RawMessageStream<T> {
                         Err(e) => {
                             break Err(Error::new(ErrorKind::InvalidData, format!("{}", e)));
                         }
+                        Ok(Some(header)) if header.len() == 0 => {
+                            self.state = ReadState::ReadingHeader;
+                            break Ok(Some(header));
+                        }
                         Ok(Some(header)) => self.state = ReadState::ReadingBody { header },
                         Ok(None) if header.untrusted_len == 0 => {
                             self.state = ReadState::ReadingHeader
