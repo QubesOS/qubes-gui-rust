@@ -267,6 +267,7 @@ impl Vchan {
 
     /// Receive any [`qubes_castable::Castable`] struct.  Blocks until the read is complete.
     #[cfg(feature = "castable")]
+    #[inline(always)] // trivial wrapper
     pub fn recv_struct<T: qubes_castable::Castable>(&self) -> Result<T, Error> {
         let mut datum = std::mem::MaybeUninit::<T>::uninit();
         // SAFETY: datum.as_mut_ptr() is a valid pointer to size_of::<T>()
