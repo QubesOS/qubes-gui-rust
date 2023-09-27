@@ -143,8 +143,22 @@ impl<'a> Event<'a> {
             Msg::Motion => Event::Motion(Castable::from_bytes(body)),
             Msg::Crossing => Event::Crossing(Castable::from_bytes(body)),
             Msg::Close => Event::Close,
-            Msg::Keypress => Event::Keypress(Castable::from_bytes(body)),
-            Msg::Button => Event::Button(Castable::from_bytes(body)),
+            Msg::Keypress => {
+                let keypress: qubes_gui::Keypress = Castable::from_bytes(body);
+                match keypress.ty {
+                    qubes_gui::EV_KEY_PRESS | qubes_gui::EV_KEY_RELEASE => {}
+                    ty => return Err(Error::BadKeypress { ty }),
+                }
+                Event::Keypress(keypress)
+            }
+            Msg::Button => {
+                let button: qubes_gui::Button = Castable::from_bytes(body);
+                match button.ty {
+                    qubes_gui::EV_BUTTON_PRESS | qubes_gui::EV_BUTTON_RELEASE => {}
+                    ty => return Err(Error::BadButton { ty }),
+                }
+                Event::Button(button)
+            }
             Msg::ClipboardReq => Event::ClipboardReq,
             Msg::ClipboardData => {
                 let untrusted_data = core::str::from_utf8(body).map_err(Error::BadUTF8)?;
@@ -153,7 +167,14 @@ impl<'a> Event<'a> {
             Msg::KeymapNotify => Event::Keymap(Castable::from_bytes(body)),
             Msg::Map => Event::Redraw(Castable::from_bytes(body)),
             Msg::Unmap => Event::Configure(Castable::from_bytes(body)),
-            Msg::Focus => Event::Focus(Castable::from_bytes(body)),
+            Msg::Focus => {
+                let focus: qubes_gui::Focus = Castable::from_bytes(body);
+                match focus.ty {
+                    qubes_gui::EV_FOCUS_IN | qubes_gui::EV_FOCUS_OUT => {}
+                    ty => return Err(Error::BadFocus { ty }),
+                }
+                Event::Focus(focus)
+            }
             Msg::WindowFlags => Event::WindowFlags(Castable::from_bytes(body)),
             Msg::Destroy => Event::Destroy,
             // Agent ⇒ daemon messages
