@@ -1,0 +1,11 @@
+[package]
+name = "qubes-gui-connection"
+version = "0.1.0"
+edition = "2018"
+publish = false
+license = "GPLv2+"
+
+[dependencies]
+vchan = { path = "../vchan", version = "0.1.0", features = ["castable"] }
+qubes-gui = { path = "../qubes-gui", version = "0.1.0" }
+qubes-castable = { path = "../qubes-castable", version = "0.1.0" }

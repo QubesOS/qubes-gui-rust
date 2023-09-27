@@ -14,9 +14,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "qubes-gui-client"
+name = "qubes-gui-agent-proto"
 version = "0.1.0"
+dependencies = [
+ "qubes-castable",
+ "qubes-gui",
+]
 
 [[package]]
-name = "qubes-gui-server"
+name = "qubes-gui-connection"
+version = "0.1.0"
+dependencies = [
+ "qubes-castable",
+ "qubes-gui",
+ "vchan",
+]
+
+[[package]]
+name = "vchan"
+version = "0.1.0"
+dependencies = [
+ "qubes-castable",
+ "vchan-sys",
+]
+
+[[package]]
+name = "vchan-sys"
 version = "0.1.0"

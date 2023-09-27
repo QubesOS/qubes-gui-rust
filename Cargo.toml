@@ -1,7 +1,9 @@
 [workspace]
 members = [
-  "qubes-gui-client",
-  "qubes-gui-server",
+  "qubes-gui-connection",
   "qubes-gui",
   "qubes-castable",
+  "qubes-gui-agent-proto",
+  "vchan",
+  "vchan-sys",
 ]
