@@ -164,13 +164,12 @@ macro_rules! enum_const {
         $p: vis enum $n: ident {
             $(
                 $(#[$j: meta])*
-                ($const_name: ident, $variant_name: ident) $(= $e: expr)?
+                $variant_name: ident $(= $e: expr)?
             ),*$(,)?
         }
     ) => {
         $(#[$i])*
         #[repr($t)]
-        // #[non_exhaustive]
         $p enum $n {
             $(
                 $(#[$j])*
@@ -183,11 +182,12 @@ macro_rules! enum_const {
             #[allow(non_upper_case_globals)]
             fn try_from(value: $t) -> ::core::result::Result<Self, $t> {
                 $(
-                    const $const_name: $t = $n::$variant_name as $t;
+                    const $variant_name: $t = $n::$variant_name as $t;
                 )*
+
                 match value {
                     $(
-                        $const_name => return ::core::result::Result::Ok($n::$variant_name),
+                        $variant_name => return ::core::result::Result::Ok($n::$variant_name),
                     )*
                     other => ::core::result::Result::Err(other),
                 }
@@ -201,56 +201,56 @@ enum_const! {
     /// Message types
     pub enum Msg {
         /// Daemon ⇒ agent: A key has been pressed
-        (MSG_KEYPRESS, Keypress) = 124,
+        Keypress = 124,
         /// Daemon ⇒ agent: A button has been pressed
-        (MSG_BUTTON, Button),
+        Button,
         /// Daemon ⇒ agent: Pointer has moved.
-        (MSG_MOTION, Motion),
+        Motion,
         /// Daemon ⇒ agent: Pointer has crossed edge of window.
-        (MSG_CROSSING, Crossing),
+        Crossing,
         /// Daemon ⇒ agent: A window has just acquired focus.
-        (MSG_FOCUS, Focus),
+        Focus,
         /// Daemon ⇒ agent, obsolete.
-        (MSG_RESIZE, Resize),
+        Resize,
         /// Agent ⇒ daemon: Creates a window.
-        (MSG_CREATE, Create),
+        Create,
         /// Agent ⇒ daemon: Destroys a window.
-        (MSG_DESTROY, Destroy),
+        Destroy,
         /// Bidirectional: Map a window.
-        (MSG_MAP, Map),
+        Map,
         /// Agent ⇒ daemon: Unmap a window
-        (MSG_UNMAP, Unmap) = 133,
+        Unmap = 133,
         /// Bidirectional: Configure a window
-        (MSG_CONFIGURE, Configure),
+        Configure,
         /// Ask dom0 (only!) to map the given amount of memory into composition
         /// buffer.  Deprecated.
-        (MSG_MFNDUMP, MfnDump),
+        MfnDump,
         /// Agent ⇒ daemon: Redraw given area of screen.
-        (MSG_SHMIMAGE, ShmImage),
+        ShmImage,
         /// Daemon ⇒ agent: Request that a window be destroyed.
-        (MSG_CLOSE, Close),
+        Close,
         /// Daemon ⇒ agent, deprecated, DO NOT USE
-        (MSG_EXECUTE, Execute),
+        Execute,
         /// Daemon ⇒ agent: Request clipboard data.
-        (MSG_CLIPBOARD_REQ, ClipboardReq),
+        ClipboardReq,
         /// Bidirectional: Clipboard data
-        (MSG_CLIPBOARD_DATA, ClipboardData),
+        ClipboardData,
         /// Agent ⇒ daemon: Set the title of a window.  Called MSG_WMNAME in C.
-        (MSG_SET_TITLE, SetTitle),
+        SetTitle,
         /// Daemon ⇒ agent: Update the keymap
-        (MSG_KEYMAP_NOTIFY, KeymapNotify),
+        KeymapNotify,
         /// Agent ⇒ daemon: Dock a window
-        (MSG_DOCK, Dock) = 143,
+        Dock = 143,
         /// Agent ⇒ daemon: Set window manager hints.
-        (MSG_WINDOW_HINTS, WindowHints),
+        WindowHints,
         /// Bidirectional: Set window manager flags.
-        (MSG_WINDOW_FLAGS, WindowFlags),
+        WindowFlags,
         /// Agent ⇒ daemon: Set window class.
-        (MSG_WINDOW_CLASS, WindowClass),
+        WindowClass,
         /// Agent ⇒ daemon: Send shared memory dump
-        (MSG_WINDOW_DUMP, WindowDump),
+        WindowDump,
         /// Agent ⇒ daemon: Set cursor type
-        (MSG_CURSOR, Cursor),
+        Cursor,
     }
 }
 
@@ -259,9 +259,9 @@ enum_const! {
     /// State of a button
     pub enum ButtonEvent {
         /// A button has been pressed
-        (EV_BUTTON_PRESS, Press) = 4,
+        Press = 4,
         /// A button has been released
-        (EV_BUTTON_RELEASE, Release) = 5,
+        Release = 5,
     }
 }
 
@@ -270,9 +270,9 @@ enum_const! {
     /// Key change event
     pub enum KeyEvent {
         /// The key was pressed
-        (EV_KEY_PRESS, Press) = 2,
+        Press = 2,
         /// The key was released
-        (EV_KEY_RELEASE, Release) = 3,
+        Release = 3,
     }
 }
 
@@ -281,9 +281,9 @@ enum_const! {
     /// Focus change event
     pub enum FocusEvent {
         /// The window now has focus
-        (EV_FOCUS_IN, In) = 9,
+        In = 9,
         /// The window has lost focus
-        (EV_FOCUS_OUT, Out) = 10,
+        Out = 10,
     }
 }
 
